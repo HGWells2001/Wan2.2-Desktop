@@ -42,6 +42,7 @@ export function App() {
   const [submitting, setSubmitting] = useState(false);
   const [installingRuntime, setInstallingRuntime] = useState(false);
   const [desktopReady, setDesktopReady] = useState(false);
+  const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
 
   async function refreshRuntime() {
     try {
@@ -96,6 +97,30 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!modelDownload || !["queued", "running"].includes(modelDownload.status)) return;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`${API}/models/download/${modelDownload.id}`);
+        if (!response.ok) return;
+        const next = (await response.json()) as GenerationJob;
+        setModelDownload(next);
+
+        if (next.status === "completed") {
+          setCheckpointDir(next.outputPath);
+          if (window.wanDesktop) {
+            await window.wanDesktop.saveConfig({ checkpointDir: next.outputPath });
+          }
+        }
+      } catch {
+        // Preserve current state during transient backend restarts.
+      }
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [modelDownload]);
+
+  useEffect(() => {
     if (!job || !["queued", "running"].includes(job.status)) return;
 
     const timer = window.setInterval(async () => {
@@ -134,6 +159,38 @@ export function App() {
 
     setCheckpointDir(selected);
     await desktop.saveConfig({ checkpointDir: selected });
+  }
+
+  async function downloadDefaultModel() {
+    const desktop = window.wanDesktop;
+    if (!desktop) {
+      setError("Model download is available in the desktop app.");
+      return;
+    }
+
+    const destination = await desktop.chooseDirectory("Choose model storage folder");
+    if (!destination) return;
+
+    setError(null);
+    try {
+      const response = await fetch(`${API}/models/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repo_id: "Wan-AI/Wan2.2-TI2V-5B",
+          destination,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail ?? "Model download could not be started");
+      }
+
+      setModelDownload(payload);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   }
 
   async function chooseImage() {
@@ -334,7 +391,7 @@ export function App() {
               <input
                 value={checkpointDir}
                 onChange={(event) => setCheckpointDir(event.target.value)}
-                placeholder="Choose the downloaded model folder"
+                placeholder="Choose or download the model"
                 required
               />
               <button
@@ -347,6 +404,26 @@ export function App() {
               </button>
             </div>
           </label>
+
+          <div className="model-actions">
+            <button
+              className="secondary"
+              type="button"
+              disabled={!desktopReady || ["queued", "running"].includes(modelDownload?.status ?? "")}
+              onClick={() => void downloadDefaultModel()}
+            >
+              {["queued", "running"].includes(modelDownload?.status ?? "")
+                ? "Downloading Wan2.2-TI2V-5B…"
+                : "Download Wan2.2-TI2V-5B"}
+            </button>
+            {modelDownload && (
+              <span className="download-status">
+                {modelDownload.status === "completed"
+                  ? "Model ready"
+                  : modelDownload.status}
+              </span>
+            )}
+          </div>
 
           <div className="field-row">
             <label>
