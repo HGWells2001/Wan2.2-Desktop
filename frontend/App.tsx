@@ -28,6 +28,14 @@ type Hardware = {
   gpus: Gpu[];
 };
 
+type NativeGpu = {
+  detected: boolean;
+  name: string | null;
+  driverVersion: string | null;
+  source: string | null;
+  diagnostics: string[];
+};
+
 type GenerationJob = {
   id: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -73,6 +81,7 @@ const API = "http://127.0.0.1:8000/api";
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [hardware, setHardware] = useState<Hardware | null>(null);
+  const [nativeGpu, setNativeGpu] = useState<NativeGpu | null>(null);
   const [prompt, setPrompt] = useState("");
   const [checkpointDir, setCheckpointDir] = useState("");
   const [imagePath, setImagePath] = useState("");
@@ -89,6 +98,25 @@ export function App() {
   const [pythonProgress, setPythonProgress] = useState<DesktopProgress | null>(null);
   const [desktopReady, setDesktopReady] = useState(false);
   const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
+
+  async function refreshNativeGpu() {
+    const desktop = window.wanDesktop;
+    if (!desktop) return;
+
+    try {
+      setNativeGpu(await desktop.getNativeGpu());
+    } catch (reason) {
+      setNativeGpu({
+        detected: false,
+        name: null,
+        driverVersion: null,
+        source: null,
+        diagnostics: [
+          reason instanceof Error ? reason.message : String(reason),
+        ],
+      });
+    }
+  }
 
   async function refreshRuntime() {
     try {
@@ -134,6 +162,7 @@ export function App() {
       setDesktopReady(Boolean(desktop));
 
       if (desktop) {
+        await refreshNativeGpu();
         const config = await desktop.getConfig();
         if (!cancelled && config.checkpointDir) {
           setCheckpointDir(config.checkpointDir);
@@ -210,20 +239,34 @@ export function App() {
   }, [job]);
 
   const gpuSummary = useMemo(() => {
-    if (!hardware) return "Checking GPU…";
-    if (!hardware.nvidia_gpu_detected || hardware.gpus.length === 0) {
-      return "No NVIDIA GPU detected";
+    if (hardware?.nvidia_gpu_detected && hardware.gpus.length > 0) {
+      return hardware.gpus
+        .map((gpu) => {
+          const vram = gpu.total_vram_mb
+            ? `${(gpu.total_vram_mb / 1024).toFixed(0)} GB`
+            : null;
+          return [gpu.name, vram].filter(Boolean).join(" · ");
+        })
+        .join(", ");
     }
 
-    return hardware.gpus
-      .map((gpu) => {
-        const vram = gpu.total_vram_mb
-          ? `${(gpu.total_vram_mb / 1024).toFixed(0)} GB`
-          : null;
-        return [gpu.name, vram].filter(Boolean).join(" · ");
-      })
-      .join(", ");
-  }, [hardware]);
+    if (nativeGpu?.detected) {
+      return nativeGpu.name ?? "NVIDIA GPU detected";
+    }
+
+    if (nativeGpu) return "No NVIDIA GPU detected";
+    return "Checking GPU…";
+  }, [hardware, nativeGpu]);
+
+  async function refreshHardware() {
+    await refreshNativeGpu();
+
+    if (pythonReady) {
+      await refreshRuntime();
+    } else {
+      setError(null);
+    }
+  }
 
   async function chooseCheckpointDir() {
     const desktop = window.wanDesktop;
@@ -631,24 +674,38 @@ export function App() {
                 <dd>
                   {hardware?.nvidia_driver_detected
                     ? hardware.gpus.find((gpu) => gpu.driver_version)?.driver_version ?? "Detected"
-                    : "Not detected"}
+                    : nativeGpu?.driverVersion
+                      ? nativeGpu.driverVersion
+                      : nativeGpu?.detected
+                        ? "GPU detected, driver version unavailable"
+                        : nativeGpu
+                          ? "Not detected"
+                          : "Checking…"}
                 </dd>
               </div>
               <div>
                 <dt>PyTorch</dt>
                 <dd>
-                  {hardware?.torch_available
-                    ? hardware.torch_version ?? "Installed"
-                    : "Not available"}
+                  {hardware
+                    ? hardware.torch_available
+                      ? hardware.torch_version ?? "Installed"
+                      : "Not available"
+                    : pythonReady
+                      ? "Backend offline"
+                      : "Setup required"}
                 </dd>
               </div>
               <div>
                 <dt>CUDA</dt>
                 <dd>
-                  {hardware?.cuda_available
-                    ? `Available${hardware.cuda_version ? ` · CUDA ${hardware.cuda_version}` : ""}`
-                    : hardware?.torch_available
-                      ? "PyTorch loaded, CUDA unavailable"
+                  {hardware
+                    ? hardware.cuda_available
+                      ? `Available${hardware.cuda_version ? ` · CUDA ${hardware.cuda_version}` : ""}`
+                      : hardware.torch_available
+                        ? "PyTorch loaded, CUDA unavailable"
+                        : "PyTorch/CUDA not ready"
+                    : pythonReady
+                      ? "Backend offline, CUDA not checked"
                       : "Waiting for Python/CUDA setup"}
                 </dd>
               </div>
@@ -657,7 +714,11 @@ export function App() {
                 <dd>
                   {hardware?.detection_sources?.length
                     ? hardware.detection_sources.join(", ")
-                    : "No detection source succeeded"}
+                    : nativeGpu?.source
+                      ? `${nativeGpu.source} (desktop)`
+                      : nativeGpu
+                        ? "Desktop check completed"
+                        : "Checking…"}
                 </dd>
               </div>
               <div>
@@ -669,18 +730,18 @@ export function App() {
                 <dd>{desktopReady ? "Ready" : "Browser preview"}</dd>
               </div>
             </dl>
-            {hardware?.diagnostics?.length ? (
+            {(hardware?.diagnostics?.length || nativeGpu?.diagnostics?.length) ? (
               <details className="hardware-diagnostics">
                 <summary>Hardware diagnostics</summary>
                 <ul>
-                  {hardware.diagnostics.map((line, index) => (
+                  {(hardware?.diagnostics ?? nativeGpu?.diagnostics ?? []).map((line, index) => (
                     <li key={index}>{line}</li>
                   ))}
                 </ul>
               </details>
             ) : null}
 
-            <button className="secondary" type="button" onClick={() => void refreshRuntime()}>
+            <button className="secondary" type="button" onClick={() => void refreshHardware()}>
               Refresh hardware
             </button>
           </section>
