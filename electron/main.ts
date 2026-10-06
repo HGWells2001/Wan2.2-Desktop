@@ -94,7 +94,7 @@ function stopBackend() {
 
 function restartBackend() {
   stopBackend();
-  window.setTimeout(startBackend, 350);
+  setTimeout(startBackend, 350);
 }
 
 function createWindow() {
@@ -169,8 +169,8 @@ function registerIpc() {
       );
 
       let output = "";
-      child.stdout.on("data", (chunk) => { output += String(chunk); });
-      child.stderr.on("data", (chunk) => { output += String(chunk); });
+      child.stdout?.on("data", (chunk) => { output += String(chunk); });
+      child.stderr?.on("data", (chunk) => { output += String(chunk); });
 
       child.on("error", (error) => {
         resolve({ ok: false, error: error.message, output });
