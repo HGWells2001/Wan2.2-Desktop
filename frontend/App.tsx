@@ -43,6 +43,7 @@ export function App() {
   const [installingRuntime, setInstallingRuntime] = useState(false);
   const [settingUpPython, setSettingUpPython] = useState(false);
   const [pythonReady, setPythonReady] = useState(false);
+  const [runtimeInstalled, setRuntimeInstalled] = useState(false);
   const [desktopReady, setDesktopReady] = useState(false);
   const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
 
@@ -77,22 +78,29 @@ export function App() {
         if (!cancelled && config.checkpointDir) {
           setCheckpointDir(config.checkpointDir);
         }
+        if (!cancelled && config.wanSourceDir) {
+          setRuntimeInstalled(true);
+        }
         if (!cancelled && config.pythonPath) {
           setPythonReady(true);
-        }
-      }
 
-      for (let attempt = 0; attempt < 12 && !cancelled; attempt += 1) {
-        try {
-          const response = await fetch(`${API}/health`);
-          if (response.ok) break;
-        } catch {
-          // Electron may still be starting the local Python backend.
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-      }
+          for (let attempt = 0; attempt < 20 && !cancelled; attempt += 1) {
+            try {
+              const response = await fetch(`${API}/health`);
+              if (response.ok) break;
+            } catch {
+              // Managed Python backend may still be starting.
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 500));
+          }
 
-      if (!cancelled) await refreshRuntime();
+          if (!cancelled) await refreshRuntime();
+        } else if (!cancelled) {
+          setError(null);
+        }
+      } else if (!cancelled) {
+        setError(null);
+      }
     }
 
     void initializeDesktop();
@@ -218,8 +226,26 @@ export function App() {
         throw new Error(result.error || result.output || "Python runtime setup failed");
       }
       setPythonReady(true);
-      await new Promise((resolve) => window.setTimeout(resolve, 700));
-      await refreshRuntime();
+
+      let connected = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        try {
+          const response = await fetch(`${API}/health`);
+          if (response.ok) {
+            connected = true;
+            break;
+          }
+        } catch {
+          // Backend is restarting under the managed environment.
+        }
+      }
+
+      if (connected) {
+        await refreshRuntime();
+      } else {
+        setError("Python/CUDA setup completed, but the local backend did not start.");
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -243,21 +269,11 @@ export function App() {
         throw new Error(result.error || result.output || "Wan runtime installation failed");
       }
 
-      for (let attempt = 0; attempt < 16; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 500));
-        try {
-          const response = await fetch(`${API}/health`);
-          if (response.ok) {
-            const nextHealth = (await response.json()) as Health;
-            setHealth(nextHealth);
-            if (nextHealth.providerReady) break;
-          }
-        } catch {
-          // Backend is restarting with the new runtime path.
-        }
-      }
+      setRuntimeInstalled(true);
+      setError(null);
 
-      await refreshRuntime();
+      // Do not probe the FastAPI backend yet. It is expected to be offline
+      // until the managed Python/CUDA environment has been installed.
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -338,23 +354,28 @@ export function App() {
             <span className="step">SETUP</span>
             <h2>Install the official Wan 2.2 runtime</h2>
             <p>
-              Wan2.2 Desktop can clone the official runtime into its private app
-              data folder and remember it automatically.
+              Step 1 downloads the official Wan runtime. Step 2 creates the
+              managed Python/CUDA environment. The local API is expected to stay
+              offline until step 2 is complete.
             </p>
           </div>
           <div className="setup-actions">
             <button
               className="secondary"
               type="button"
-              disabled={!desktopReady || installingRuntime}
+              disabled={!desktopReady || installingRuntime || runtimeInstalled}
               onClick={() => void installRuntime()}
             >
-              {installingRuntime ? "Installing Wan…" : "1. Install Wan runtime"}
+              {installingRuntime
+                ? "Installing Wan…"
+                : runtimeInstalled
+                  ? "Wan runtime installed"
+                  : "1. Install Wan runtime"}
             </button>
             <button
               className="generate compact"
               type="button"
-              disabled={!desktopReady || settingUpPython || pythonReady}
+              disabled={!desktopReady || !runtimeInstalled || settingUpPython || pythonReady}
               onClick={() => void setupPythonRuntime()}
             >
               {settingUpPython
