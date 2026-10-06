@@ -36,6 +36,15 @@ type NativeGpu = {
   diagnostics: string[];
 };
 
+type BackendStatus = {
+  processRunning: boolean;
+  apiReachable: boolean;
+  apiStatus: number | null;
+  pythonPath: string;
+  lastExitCode: number | null;
+  logTail: string;
+};
+
 type GenerationJob = {
   id: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -82,6 +91,7 @@ export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [hardware, setHardware] = useState<Hardware | null>(null);
   const [nativeGpu, setNativeGpu] = useState<NativeGpu | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
   const [prompt, setPrompt] = useState("");
   const [checkpointDir, setCheckpointDir] = useState("");
   const [imagePath, setImagePath] = useState("");
@@ -118,6 +128,19 @@ export function App() {
     }
   }
 
+  async function refreshBackendStatus() {
+    const desktop = window.wanDesktop;
+    if (!desktop) return null;
+
+    try {
+      const status = await desktop.getBackendStatus();
+      setBackendStatus(status);
+      return status;
+    } catch {
+      return null;
+    }
+  }
+
   async function refreshRuntime() {
     try {
       const [healthResponse, hardwareResponse] = await Promise.all([
@@ -131,9 +154,24 @@ export function App() {
 
       setHealth(await healthResponse.json());
       setHardware(await hardwareResponse.json());
+      await refreshBackendStatus();
       setError(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const status = await refreshBackendStatus();
+
+      if (status?.apiReachable) {
+        setError(
+          "The backend API is running, but the desktop renderer could not access it. Reinstall the latest build with the desktop CORS fix.",
+        );
+      } else if (status?.processRunning) {
+        setError("The backend process is running but its HTTP API is not ready yet.");
+      } else if (status?.lastExitCode !== null && status?.lastExitCode !== undefined) {
+        setError(
+          `The backend exited with code ${status.lastExitCode}. Open Backend diagnostics for details.`,
+        );
+      } else {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     }
   }
 
@@ -163,6 +201,7 @@ export function App() {
 
       if (desktop) {
         await refreshNativeGpu();
+        await refreshBackendStatus();
         const config = await desktop.getConfig();
         if (!cancelled && config.checkpointDir) {
           setCheckpointDir(config.checkpointDir);
@@ -260,6 +299,7 @@ export function App() {
 
   async function refreshHardware() {
     await refreshNativeGpu();
+    await refreshBackendStatus();
 
     if (pythonReady) {
       await refreshRuntime();
@@ -723,7 +763,18 @@ export function App() {
               </div>
               <div>
                 <dt>Backend</dt>
-                <dd>{health?.status === "ok" ? "Connected" : "Offline"}</dd>
+                <dd>
+                  {health?.status === "ok"
+                    ? "Connected"
+                    : backendStatus?.apiReachable
+                      ? "API reachable · renderer blocked"
+                      : backendStatus?.processRunning
+                        ? "Process running · API starting"
+                        : backendStatus?.lastExitCode !== null &&
+                            backendStatus?.lastExitCode !== undefined
+                          ? `Exited · code ${backendStatus.lastExitCode}`
+                          : "Offline"}
+                </dd>
               </div>
               <div>
                 <dt>Desktop bridge</dt>
@@ -738,6 +789,29 @@ export function App() {
                     <li key={index}>{line}</li>
                   ))}
                 </ul>
+              </details>
+            ) : null}
+
+            {backendStatus ? (
+              <details className="hardware-diagnostics">
+                <summary>Backend diagnostics</summary>
+                <ul>
+                  <li>Python: {backendStatus.pythonPath}</li>
+                  <li>
+                    Process: {backendStatus.processRunning ? "running" : "not running"}
+                  </li>
+                  <li>
+                    API: {backendStatus.apiReachable
+                      ? `reachable (HTTP ${backendStatus.apiStatus ?? "?"})`
+                      : "not reachable"}
+                  </li>
+                  {backendStatus.lastExitCode !== null ? (
+                    <li>Last exit code: {backendStatus.lastExitCode}</li>
+                  ) : null}
+                </ul>
+                {backendStatus.logTail ? (
+                  <pre className="backend-log">{backendStatus.logTail}</pre>
+                ) : null}
               </details>
             ) : null}
 
