@@ -160,7 +160,8 @@ function registerIpc() {
     }
 
     const config = readConfig();
-    if (!config.wanSourceDir || !fs.existsSync(path.join(config.wanSourceDir, "generate.py"))) {
+    const wanSourceDir = config.wanSourceDir;
+    if (!wanSourceDir || !fs.existsSync(path.join(wanSourceDir, "generate.py"))) {
       return { ok: false, error: "Install the Wan 2.2 runtime first." };
     }
 
@@ -178,20 +179,20 @@ function registerIpc() {
           "-File", script,
           "-BackendDir", backendDir(),
           "-RuntimeRoot", runtimeRoot,
-          "-WanSourceDir", config.wanSourceDir,
+          "-WanSourceDir", wanSourceDir,
         ],
-        { windowsHide: true },
+        { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
       );
 
       let output = "";
-      child.stdout?.on("data", (chunk) => { output += String(chunk); });
-      child.stderr?.on("data", (chunk) => { output += String(chunk); });
+      child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+      child.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
 
-      child.on("error", (error) => {
+      child.on("error", (error: Error) => {
         resolve({ ok: false, error: error.message, output });
       });
 
-      child.on("exit", (code) => {
+      child.on("exit", (code: number | null) => {
         const pythonPath = path.join(runtimeRoot, "python", "Scripts", "python.exe");
         if (code === 0 && fs.existsSync(pythonPath)) {
           const nextConfig = writeConfig({ pythonPath });
