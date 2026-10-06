@@ -387,3 +387,21 @@ code {
     width: 100%;
   }
 }
+
+
+.model-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.model-actions .secondary {
+  margin-top: 0;
+}
+
+.download-status {
+  color: #8f98aa;
+  font-size: 12px;
+  text-transform: capitalize;
+}
