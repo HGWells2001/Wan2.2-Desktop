@@ -11,7 +11,8 @@
     "build": "vite build",
     "build:frontend": "vite build",
     "typecheck": "tsc --noEmit",
-    "backend:dev": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+    "backend:dev": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dist:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "lucide-react": "^0.400.0",
@@ -26,6 +27,7 @@
     "electron": "^41.0.2",
     "typescript": "^5.4.5",
     "vite": "^7.3.1",
-    "vite-plugin-electron": "^0.29.1"
+    "vite-plugin-electron": "^0.29.1",
+    "electron-builder": "^26.0.12"
   }
 }
