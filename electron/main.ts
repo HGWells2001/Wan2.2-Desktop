@@ -22,6 +22,11 @@ type ProcessResult = {
   output: string;
 };
 
+type ProgressPayload = {
+  percent: number;
+  phase: string;
+};
+
 let backendProcess: ChildProcess | null = null;
 
 function projectRoot() {
@@ -72,7 +77,7 @@ function pythonExecutable() {
 function runProcess(
   command: string,
   args: string[],
-  options: { cwd?: string } = {},
+  options: { cwd?: string; onOutput?: (text: string) => void } = {},
 ): Promise<ProcessResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -83,10 +88,14 @@ function runProcess(
 
     let output = "";
     child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
+      const text = chunk.toString();
+      output += text;
+      options.onOutput?.(text);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
+      const text = chunk.toString();
+      output += text;
+      options.onOutput?.(text);
     });
 
     child.on("error", (error: Error) => {
@@ -99,14 +108,46 @@ function runProcess(
   });
 }
 
-async function downloadFile(url: string, destination: string) {
+async function downloadFile(
+  url: string,
+  destination: string,
+  onProgress?: (percent: number) => void,
+) {
   const response = await net.fetch(url);
   if (!response.ok) {
     throw new Error(`Download failed with HTTP ${response.status}`);
   }
 
-  const bytes = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(destination, bytes);
+  const total = Number(response.headers.get("content-length") ?? 0);
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(destination, bytes);
+    onProgress?.(100);
+    return;
+  }
+
+  const handle = fs.openSync(destination, "w");
+  let received = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = Buffer.from(value);
+      fs.writeSync(handle, chunk);
+      received += chunk.length;
+
+      if (total > 0) {
+        onProgress?.(Math.min(100, Math.round((received / total) * 100)));
+      }
+    }
+  } finally {
+    fs.closeSync(handle);
+  }
+
+  onProgress?.(100);
 }
 
 function startBackend() {
@@ -207,7 +248,7 @@ function registerIpc() {
     },
   );
 
-  ipcMain.handle("desktop:setup-python-runtime", async () => {
+  ipcMain.handle("desktop:setup-python-runtime", async (event) => {
     if (process.platform !== "win32") {
       return {
         ok: false,
@@ -226,18 +267,53 @@ function registerIpc() {
       ? path.join(process.resourcesPath, "scripts", "setup-runtime.ps1")
       : path.join(projectRoot(), "scripts", "setup-runtime.ps1");
 
-    const result = await runProcess("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy", "Bypass",
-      "-File", script,
-      "-BackendDir", backendDir(),
-      "-RuntimeRoot", runtimeRoot,
-      "-WanSourceDir", wanSourceDir,
-    ]);
+    const setupStages: Array<[RegExp, ProgressPayload]> = [
+      [/Downloading pinned uv/i, { percent: 5, phase: "Downloading setup tools" }],
+      [/Installing managed Python/i, { percent: 12, phase: "Installing Python 3.11" }],
+      [/Creating isolated Python environment/i, { percent: 20, phase: "Creating Python environment" }],
+      [/Updating pip tooling/i, { percent: 28, phase: "Updating Python tools" }],
+      [/Installing Wan2\.2 Desktop backend/i, { percent: 36, phase: "Installing desktop backend" }],
+      [/Installing PyTorch CUDA runtime/i, { percent: 46, phase: "Installing PyTorch/CUDA" }],
+      [/Installing Wan dependencies/i, { percent: 68, phase: "Installing Wan dependencies" }],
+      [/Installing Wan source package/i, { percent: 90, phase: "Installing Wan runtime package" }],
+      [/Using PyTorch SDPA/i, { percent: 94, phase: "Configuring attention backend" }],
+      [/Running runtime diagnostics/i, { percent: 97, phase: "Checking GPU runtime" }],
+    ];
+
+    event.sender.send("desktop:python-progress", {
+      percent: 1,
+      phase: "Starting setup",
+    } satisfies ProgressPayload);
+
+    const result = await runProcess(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", script,
+        "-BackendDir", backendDir(),
+        "-RuntimeRoot", runtimeRoot,
+        "-WanSourceDir", wanSourceDir,
+      ],
+      {
+        onOutput: (text) => {
+          for (const [pattern, progress] of setupStages) {
+            if (pattern.test(text)) {
+              event.sender.send("desktop:python-progress", progress);
+              break;
+            }
+          }
+        },
+      },
+    );
 
     const pythonPath = path.join(runtimeRoot, "python", "Scripts", "python.exe");
     if (result.code === 0 && fs.existsSync(pythonPath)) {
       const nextConfig = writeConfig({ pythonPath });
+      event.sender.send("desktop:python-progress", {
+        percent: 100,
+        phase: "Python/CUDA ready",
+      } satisfies ProgressPayload);
       restartBackend();
       return {
         ok: true,
@@ -254,7 +330,7 @@ function registerIpc() {
     };
   });
 
-  ipcMain.handle("desktop:install-wan-runtime", async () => {
+  ipcMain.handle("desktop:install-wan-runtime", async (event) => {
     if (process.platform !== "win32") {
       return {
         ok: false,
@@ -268,6 +344,10 @@ function registerIpc() {
 
     if (fs.existsSync(path.join(destination, "generate.py"))) {
       const config = writeConfig({ wanSourceDir: destination });
+      event.sender.send("desktop:wan-progress", {
+        percent: 100,
+        phase: "Wan runtime installed",
+      } satisfies ProgressPayload);
       restartBackend();
       return {
         ok: true,
@@ -285,7 +365,26 @@ function registerIpc() {
       fs.rmSync(extractRoot, { recursive: true, force: true });
       fs.rmSync(archivePath, { force: true });
 
-      await downloadFile(WAN_ARCHIVE_URL, archivePath);
+      event.sender.send("desktop:wan-progress", {
+        percent: 1,
+        phase: "Starting download",
+      } satisfies ProgressPayload);
+
+      await downloadFile(WAN_ARCHIVE_URL, archivePath, (downloadPercent) => {
+        const overallPercent = Math.max(
+          2,
+          Math.min(78, Math.round(downloadPercent * 0.76) + 2),
+        );
+        event.sender.send("desktop:wan-progress", {
+          percent: overallPercent,
+          phase: `Downloading Wan 2.2 (${downloadPercent}%)`,
+        } satisfies ProgressPayload);
+      });
+
+      event.sender.send("desktop:wan-progress", {
+        percent: 82,
+        phase: "Extracting Wan 2.2",
+      } satisfies ProgressPayload);
       const expand = await runProcess("powershell.exe", [
         "-NoProfile",
         "-Command",
@@ -298,6 +397,11 @@ function registerIpc() {
       if (expand.code !== 0) {
         throw new Error(expand.output || "Could not extract the Wan runtime archive.");
       }
+
+      event.sender.send("desktop:wan-progress", {
+        percent: 94,
+        phase: "Verifying runtime",
+      } satisfies ProgressPayload);
 
       const extractedDir = path.join(
         extractRoot,
