@@ -9,6 +9,14 @@ declare global {
   interface Window {
     wanDesktop?: {
       platform: string;
+      getBackendStatus(): Promise<{
+        processRunning: boolean;
+        apiReachable: boolean;
+        apiStatus: number | null;
+        pythonPath: string;
+        lastExitCode: number | null;
+        logTail: string;
+      }>;
       getNativeGpu(): Promise<{
         detected: boolean;
         name: string | null;
