@@ -10,6 +10,7 @@ type DesktopConfig = {
   wanSourceDir?: string;
   checkpointDir?: string;
   outputDir?: string;
+  pythonPath?: string;
 };
 
 let backendProcess: ChildProcess | null = null;
@@ -44,6 +45,9 @@ function writeConfig(patch: Partial<DesktopConfig>) {
 }
 
 function pythonExecutable() {
+  const config = readConfig();
+  if (config.pythonPath && fs.existsSync(config.pythonPath)) return config.pythonPath;
+
   const configured = process.env.WAN22_PYTHON;
   if (configured) return configured;
 
@@ -149,6 +153,60 @@ function registerIpc() {
       return next;
     },
   );
+
+  ipcMain.handle("desktop:setup-python-runtime", async () => {
+    if (process.platform !== "win32") {
+      return { ok: false, error: "Automatic Python runtime setup is currently implemented for Windows." };
+    }
+
+    const config = readConfig();
+    if (!config.wanSourceDir || !fs.existsSync(path.join(config.wanSourceDir, "generate.py"))) {
+      return { ok: false, error: "Install the Wan 2.2 runtime first." };
+    }
+
+    const runtimeRoot = path.join(app.getPath("userData"), "runtime");
+    const script = app.isPackaged
+      ? path.join(process.resourcesPath, "scripts", "setup-runtime.ps1")
+      : path.join(projectRoot(), "scripts", "setup-runtime.ps1");
+
+    return await new Promise((resolve) => {
+      const child = spawn(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-ExecutionPolicy", "Bypass",
+          "-File", script,
+          "-BackendDir", backendDir(),
+          "-RuntimeRoot", runtimeRoot,
+          "-WanSourceDir", config.wanSourceDir,
+        ],
+        { windowsHide: true },
+      );
+
+      let output = "";
+      child.stdout?.on("data", (chunk) => { output += String(chunk); });
+      child.stderr?.on("data", (chunk) => { output += String(chunk); });
+
+      child.on("error", (error) => {
+        resolve({ ok: false, error: error.message, output });
+      });
+
+      child.on("exit", (code) => {
+        const pythonPath = path.join(runtimeRoot, "python", "Scripts", "python.exe");
+        if (code === 0 && fs.existsSync(pythonPath)) {
+          const nextConfig = writeConfig({ pythonPath });
+          restartBackend();
+          resolve({ ok: true, pythonPath, output, config: nextConfig });
+        } else {
+          resolve({
+            ok: false,
+            error: `Runtime setup exited with code ${code}`,
+            output,
+          });
+        }
+      });
+    });
+  });
 
   ipcMain.handle("desktop:install-wan-runtime", async () => {
     const baseDir = path.join(app.getPath("userData"), "runtime");
