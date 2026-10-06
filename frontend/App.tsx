@@ -23,9 +23,42 @@ type Hardware = {
 type GenerationJob = {
   id: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  phase: string;
   outputPath: string;
   error?: string | null;
 };
+
+function ProgressBar({
+  percent,
+  phase,
+}: {
+  percent: number;
+  phase: string;
+}) {
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+
+  return (
+    <div className="progress-block" aria-live="polite">
+      <div className="progress-meta">
+        <span>{phase}</span>
+        <strong>{safePercent}%</strong>
+      </div>
+      <div
+        className="progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={safePercent}
+      >
+        <div
+          className="progress-fill"
+          style={{ width: `${safePercent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 const API = "http://127.0.0.1:8000/api";
 
@@ -44,6 +77,8 @@ export function App() {
   const [settingUpPython, setSettingUpPython] = useState(false);
   const [pythonReady, setPythonReady] = useState(false);
   const [runtimeInstalled, setRuntimeInstalled] = useState(false);
+  const [wanProgress, setWanProgress] = useState<DesktopProgress | null>(null);
+  const [pythonProgress, setPythonProgress] = useState<DesktopProgress | null>(null);
   const [desktopReady, setDesktopReady] = useState(false);
   const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
 
@@ -65,6 +100,23 @@ export function App() {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   }
+
+  useEffect(() => {
+    const desktop = window.wanDesktop;
+    if (!desktop) return;
+
+    const unsubscribeWan = desktop.onWanProgress((progress) => {
+      setWanProgress(progress);
+    });
+    const unsubscribePython = desktop.onPythonProgress((progress) => {
+      setPythonProgress(progress);
+    });
+
+    return () => {
+      unsubscribeWan();
+      unsubscribePython();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +271,7 @@ export function App() {
     if (!desktop) return;
 
     setSettingUpPython(true);
+    setPythonProgress({ percent: 1, phase: "Starting setup" });
     setError(null);
     try {
       const result = await desktop.setupPythonRuntime();
@@ -226,6 +279,7 @@ export function App() {
         throw new Error(result.error || result.output || "Python runtime setup failed");
       }
       setPythonReady(true);
+      setPythonProgress({ percent: 100, phase: "Python/CUDA ready" });
 
       let connected = false;
       for (let attempt = 0; attempt < 30; attempt += 1) {
@@ -261,6 +315,7 @@ export function App() {
     }
 
     setInstallingRuntime(true);
+    setWanProgress({ percent: 1, phase: "Starting Wan installation" });
     setError(null);
 
     try {
@@ -270,6 +325,7 @@ export function App() {
       }
 
       setRuntimeInstalled(true);
+      setWanProgress({ percent: 100, phase: "Wan runtime installed" });
       setError(null);
 
       // Do not probe the FastAPI backend yet. It is expected to be offline
@@ -385,6 +441,24 @@ export function App() {
                   : "2. Setup Python/CUDA"}
             </button>
           </div>
+
+          {(installingRuntime || wanProgress) && (
+            <div className="setup-progress">
+              <ProgressBar
+                percent={wanProgress?.percent ?? 0}
+                phase={wanProgress?.phase ?? "Preparing Wan runtime"}
+              />
+            </div>
+          )}
+
+          {(settingUpPython || pythonProgress) && (
+            <div className="setup-progress">
+              <ProgressBar
+                percent={pythonProgress?.percent ?? 0}
+                phase={pythonProgress?.phase ?? "Preparing Python/CUDA"}
+              />
+            </div>
+          )}
         </section>
       )}
 
@@ -481,10 +555,21 @@ export function App() {
               <span className="download-status">
                 {modelDownload.status === "completed"
                   ? "Model ready"
-                  : modelDownload.status}
+                  : modelDownload.phase || modelDownload.status}
               </span>
             )}
           </div>
+
+          {modelDownload && (
+            <ProgressBar
+              percent={modelDownload.progress ?? 0}
+              phase={
+                modelDownload.status === "completed"
+                  ? "Model ready"
+                  : modelDownload.phase || "Downloading model"
+              }
+            />
+          )}
 
           <div className="field-row">
             <label>
@@ -561,6 +646,10 @@ export function App() {
                   <strong>{job.status}</strong>
                 </div>
                 <code>{job.id.slice(0, 12)}</code>
+                <ProgressBar
+                  percent={job.progress ?? 0}
+                  phase={job.phase || job.status}
+                />
                 {job.status === "completed" && (
                   <p className="output-path">{job.outputPath}</p>
                 )}
