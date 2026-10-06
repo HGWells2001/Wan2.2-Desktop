@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("wanDesktop", {
   saveConfig: (patch: Record<string, string | undefined>) =>
     ipcRenderer.invoke("desktop:save-config", patch),
   installWanRuntime: () => ipcRenderer.invoke("desktop:install-wan-runtime"),
+  setupPythonRuntime: () => ipcRenderer.invoke("desktop:setup-python-runtime"),
 });
