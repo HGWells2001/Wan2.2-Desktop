@@ -15,8 +15,14 @@ license headers and attribution must be preserved as required by the license.
 
 ## Wan 2.2
 
-Wan model weights, code, dependencies and related assets may be distributed
-under licenses separate from this repository.
+Wan2.2 Desktop integrates with the official Wan 2.2 project maintained at:
 
-Before bundling or downloading any model automatically, Wan2.2 Desktop must
-surface and respect the applicable upstream model/code license and terms.
+https://github.com/Wan-Video/Wan2.2
+
+The upstream Wan2.2 repository identifies its code license as Apache-2.0.
+Wan model weights, dependencies and related assets can have their own terms;
+the application must surface and respect those terms when models are
+downloaded or distributed.
+
+Wan2.2 Desktop is an independent community project and is not affiliated with,
+endorsed by, or maintained by the Wan Team, Alibaba, or Lightricks.
