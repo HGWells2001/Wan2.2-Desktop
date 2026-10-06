@@ -1,0 +1,38 @@
+appId: io.github.hgwells2001.wan22desktop
+productName: Wan2.2 Desktop
+copyright: Copyright © 2026 Wan2.2 Desktop contributors
+
+directories:
+  output: release
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+
+extraResources:
+  - from: backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!**/.venv/**"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"
+  - from: scripts
+    to: scripts
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Wan2.2 Desktop
