@@ -418,6 +418,10 @@ function registerIpc() {
       fs.rmSync(archivePath, { force: true });
 
       const config = writeConfig({ wanSourceDir: destination });
+      event.sender.send("desktop:wan-progress", {
+        percent: 100,
+        phase: "Wan runtime installed",
+      } satisfies ProgressPayload);
       restartBackend();
       return {
         ok: true,
