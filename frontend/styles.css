@@ -333,3 +333,57 @@ code {
   .field-row,
   .side-column { grid-template-columns: 1fr; }
 }
+
+
+.setup-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 20px 22px;
+}
+
+.setup-banner p {
+  max-width: 720px;
+  margin: 8px 0 0;
+  color: #919aaa;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.generate.compact {
+  width: auto;
+  min-width: 210px;
+  margin-top: 0;
+  padding: 0 18px;
+}
+
+.input-with-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.secondary.inline {
+  min-width: 84px;
+  margin-top: 0;
+}
+
+@media (max-width: 700px) {
+  .setup-banner {
+    grid-template-columns: 1fr;
+  }
+
+  .generate.compact {
+    width: 100%;
+  }
+
+  .input-with-button {
+    grid-template-columns: 1fr;
+  }
+
+  .secondary.inline {
+    width: 100%;
+  }
+}
