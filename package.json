@@ -1,0 +1,29 @@
+{
+  "name": "wan2-2-desktop",
+  "version": "0.1.0",
+  "description": "Wan 2.2 video generation desktop app",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build:frontend": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^0.400.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.7",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^41.0.2",
+    "typescript": "^5.4.5",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.1"
+  }
+}
