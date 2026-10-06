@@ -14,3 +14,8 @@ class GenerationRequest(BaseModel):
     offload_model: bool = True
     convert_model_dtype: bool = True
     t5_cpu: bool = True
+
+
+class ModelDownloadRequest(BaseModel):
+    repo_id: str = "Wan-AI/Wan2.2-TI2V-5B"
+    destination: str
