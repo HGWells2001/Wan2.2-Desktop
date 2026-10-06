@@ -51,7 +51,7 @@ Get-Content $WanRequirements |
 if ($LASTEXITCODE -ne 0) { throw "Wan dependency installation failed." }
 
 Write-Step "Installing Wan source package..."
-& $PythonExe -m pip install -e $WanSourceDir
+& $PythonExe -m pip install -e $WanSourceDir --no-deps
 if ($LASTEXITCODE -ne 0) { throw "Wan package installation failed." }
 
 $FlashAttentionInstalled = $true
