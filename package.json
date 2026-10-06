@@ -1,6 +1,6 @@
 {
   "name": "wan2-2-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Wan 2.2 video generation desktop app",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -8,8 +8,10 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
     "build:frontend": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backend:dev": "cd backend && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
   },
   "dependencies": {
     "lucide-react": "^0.400.0",
