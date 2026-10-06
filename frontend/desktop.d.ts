@@ -1,6 +1,11 @@
 export {};
 
 declare global {
+  type DesktopProgress = {
+    percent: number;
+    phase: string;
+  };
+
   interface Window {
     wanDesktop?: {
       platform: string;
@@ -31,6 +36,8 @@ declare global {
         error?: string;
         output?: string;
       }>;
+      onWanProgress(callback: (progress: DesktopProgress) => void): () => void;
+      onPythonProgress(callback: (progress: DesktopProgress) => void): () => void;
     };
   }
 }
