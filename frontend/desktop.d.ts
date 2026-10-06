@@ -9,6 +9,13 @@ declare global {
   interface Window {
     wanDesktop?: {
       platform: string;
+      getNativeGpu(): Promise<{
+        detected: boolean;
+        name: string | null;
+        driverVersion: string | null;
+        source: string | null;
+        diagnostics: string[];
+      }>;
       getConfig(): Promise<{
         wanSourceDir?: string;
         checkpointDir?: string;
