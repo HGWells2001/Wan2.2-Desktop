@@ -405,3 +405,27 @@ code {
   font-size: 12px;
   text-transform: capitalize;
 }
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setup-actions .secondary {
+  margin-top: 0;
+}
+
+@media (max-width: 700px) {
+  .setup-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .setup-actions .secondary,
+  .setup-actions .generate.compact {
+    width: 100%;
+  }
+}
