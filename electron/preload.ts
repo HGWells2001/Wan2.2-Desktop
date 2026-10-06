@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("wanDesktop", {
   platform: process.platform,
   getConfig: () => ipcRenderer.invoke("desktop:get-config"),
   getNativeGpu: () => ipcRenderer.invoke("desktop:get-native-gpu"),
+  getBackendStatus: () => ipcRenderer.invoke("desktop:get-backend-status"),
   chooseDirectory: (title: string) => ipcRenderer.invoke("desktop:choose-directory", title),
   chooseImage: () => ipcRenderer.invoke("desktop:choose-image"),
   saveConfig: (patch: Record<string, string | undefined>) =>
