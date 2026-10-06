@@ -35,13 +35,23 @@ def main() -> int:
         checks["torchVersion"] = torch.__version__
         checks["cudaAvailable"] = torch.cuda.is_available()
         checks["cudaVersion"] = torch.version.cuda
+
         if torch.cuda.is_available():
             checks["gpuName"] = torch.cuda.get_device_name(0)
             checks["gpuCount"] = torch.cuda.device_count()
+        else:
+            checks["cudaDiagnostic"] = (
+                "PyTorch is installed but torch.cuda.is_available() returned false. "
+                "Check NVIDIA driver compatibility and the installed CUDA-enabled torch wheel."
+            )
     else:
         checks["cudaAvailable"] = False
+        checks["cudaDiagnostic"] = "PyTorch is not installed."
 
-    checks["ok"] = all(
+    # The managed environment is usable as long as the Python/backend/Wan stack
+    # exists. CUDA readiness is reported separately so the desktop can start and
+    # show diagnostics instead of treating the whole setup as failed.
+    checks["environmentReady"] = all(
         [
             bool(checks["generatePy"]),
             bool(checks["torch"]),
@@ -49,12 +59,12 @@ def main() -> int:
             bool(checks["fastapi"]),
             bool(checks["uvicorn"]),
             bool(checks["huggingfaceHub"]),
-            bool(checks["cudaAvailable"]),
         ]
     )
+    checks["ok"] = bool(checks["environmentReady"])
 
     print(json.dumps(checks))
-    return 0 if checks["ok"] else 2
+    return 0 if checks["environmentReady"] else 2
 
 
 if __name__ == "__main__":
