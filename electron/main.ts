@@ -27,6 +27,14 @@ type ProgressPayload = {
   phase: string;
 };
 
+type NativeGpuInfo = {
+  detected: boolean;
+  name: string | null;
+  driverVersion: string | null;
+  source: string | null;
+  diagnostics: string[];
+};
+
 let backendProcess: ChildProcess | null = null;
 
 function projectRoot() {
@@ -56,6 +64,93 @@ function writeConfig(patch: Partial<DesktopConfig>) {
   fs.mkdirSync(path.dirname(configPath()), { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify(next, null, 2), "utf8");
   return next;
+}
+
+async function detectNativeGpu(): Promise<NativeGpuInfo> {
+  const diagnostics: string[] = [];
+  const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+  const programFiles = process.env.ProgramFiles ?? "C:\\Program Files";
+
+  const candidates = [
+    path.join(systemRoot, "System32", "nvidia-smi.exe"),
+    path.join(programFiles, "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"),
+    "nvidia-smi",
+  ];
+
+  for (const candidate of candidates) {
+    if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;
+
+    const result = await runProcess(candidate, [
+      "--query-gpu=name,driver_version",
+      "--format=csv,noheader,nounits",
+    ]);
+
+    if (result.code === 0 && result.output.trim()) {
+      const firstLine = result.output.trim().split(/\r?\n/)[0];
+      const [name, driverVersion] = firstLine.split(",").map((part) => part.trim());
+      if (name) {
+        diagnostics.push(`NVIDIA GPU detected with nvidia-smi: ${candidate}`);
+        return {
+          detected: true,
+          name,
+          driverVersion: driverVersion || null,
+          source: "nvidia-smi",
+          diagnostics,
+        };
+      }
+    } else if (result.output.trim()) {
+      diagnostics.push(`nvidia-smi failed at ${candidate}: ${result.output.trim()}`);
+    }
+  }
+
+  if (process.platform === "win32") {
+    const script = [
+      "$gpu = Get-CimInstance Win32_VideoController |",
+      "Where-Object { $_.Name -match 'NVIDIA' } |",
+      "Select-Object -First 1 Name,DriverVersion;",
+      "if ($gpu) { $gpu | ConvertTo-Json -Compress }",
+    ].join(" ");
+
+    const cim = await runProcess("powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      script,
+    ]);
+
+    if (cim.code === 0 && cim.output.trim()) {
+      try {
+        const parsed = JSON.parse(cim.output.trim()) as {
+          Name?: string;
+          DriverVersion?: string;
+        };
+
+        if (parsed.Name) {
+          diagnostics.push("NVIDIA GPU detected with Windows CIM");
+          return {
+            detected: true,
+            name: parsed.Name,
+            driverVersion: parsed.DriverVersion ?? null,
+            source: "windows-cim",
+            diagnostics,
+          };
+        }
+      } catch (error) {
+        diagnostics.push(
+          `Windows CIM returned invalid data: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } else {
+      diagnostics.push("Windows CIM did not report an NVIDIA display adapter");
+    }
+  }
+
+  return {
+    detected: false,
+    name: null,
+    driverVersion: null,
+    source: null,
+    diagnostics,
+  };
 }
 
 function pythonExecutable() {
@@ -219,6 +314,7 @@ function createWindow() {
 
 function registerIpc() {
   ipcMain.handle("desktop:get-config", () => readConfig());
+  ipcMain.handle("desktop:get-native-gpu", () => detectNativeGpu());
 
   ipcMain.handle("desktop:choose-directory", async (_event, title: string) => {
     const result = await dialog.showOpenDialog({
