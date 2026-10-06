@@ -497,3 +497,19 @@ code {
   margin: 6px 0;
   line-height: 1.45;
 }
+
+
+.backend-log {
+  max-height: 220px;
+  margin: 10px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid #272d3b;
+  border-radius: 9px;
+  background: #090c12;
+  color: #adb5c3;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 10px;
+  line-height: 1.45;
+}
