@@ -40,6 +40,8 @@ export function App() {
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [installingRuntime, setInstallingRuntime] = useState(false);
+  const [desktopReady, setDesktopReady] = useState(false);
 
   async function refreshRuntime() {
     try {
@@ -61,7 +63,36 @@ export function App() {
   }
 
   useEffect(() => {
-    void refreshRuntime();
+    let cancelled = false;
+
+    async function initializeDesktop() {
+      const desktop = window.wanDesktop;
+      setDesktopReady(Boolean(desktop));
+
+      if (desktop) {
+        const config = await desktop.getConfig();
+        if (!cancelled && config.checkpointDir) {
+          setCheckpointDir(config.checkpointDir);
+        }
+      }
+
+      for (let attempt = 0; attempt < 12 && !cancelled; attempt += 1) {
+        try {
+          const response = await fetch(`${API}/health`);
+          if (response.ok) break;
+        } catch {
+          // Electron may still be starting the local Python backend.
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+      }
+
+      if (!cancelled) await refreshRuntime();
+    }
+
+    void initializeDesktop();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -94,12 +125,73 @@ export function App() {
       .join(", ");
   }, [hardware]);
 
+  async function chooseCheckpointDir() {
+    const desktop = window.wanDesktop;
+    if (!desktop) return;
+
+    const selected = await desktop.chooseDirectory("Choose Wan2.2 model folder");
+    if (!selected) return;
+
+    setCheckpointDir(selected);
+    await desktop.saveConfig({ checkpointDir: selected });
+  }
+
+  async function chooseImage() {
+    const desktop = window.wanDesktop;
+    if (!desktop) return;
+
+    const selected = await desktop.chooseImage();
+    if (selected) setImagePath(selected);
+  }
+
+  async function installRuntime() {
+    const desktop = window.wanDesktop;
+    if (!desktop) {
+      setError("Runtime installation is available in the desktop app.");
+      return;
+    }
+
+    setInstallingRuntime(true);
+    setError(null);
+
+    try {
+      const result = await desktop.installWanRuntime();
+      if (!result.ok) {
+        throw new Error(result.error || result.output || "Wan runtime installation failed");
+      }
+
+      for (let attempt = 0; attempt < 16; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        try {
+          const response = await fetch(`${API}/health`);
+          if (response.ok) {
+            const nextHealth = (await response.json()) as Health;
+            setHealth(nextHealth);
+            if (nextHealth.providerReady) break;
+          }
+        } catch {
+          // Backend is restarting with the new runtime path.
+        }
+      }
+
+      await refreshRuntime();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setInstallingRuntime(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
 
     try {
+      if (window.wanDesktop && checkpointDir) {
+        await window.wanDesktop.saveConfig({ checkpointDir });
+      }
+
       const response = await fetch(`${API}/generations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -157,6 +249,27 @@ export function App() {
         </p>
       </section>
 
+      {!health?.providerReady && (
+        <section className="setup-banner panel">
+          <div>
+            <span className="step">SETUP</span>
+            <h2>Install the official Wan 2.2 runtime</h2>
+            <p>
+              Wan2.2 Desktop can clone the official runtime into its private app
+              data folder and remember it automatically.
+            </p>
+          </div>
+          <button
+            className="generate compact"
+            type="button"
+            disabled={!desktopReady || installingRuntime}
+            onClick={() => void installRuntime()}
+          >
+            {installingRuntime ? "Installing runtime…" : "Install Wan 2.2 runtime"}
+          </button>
+        </section>
+      )}
+
       <section className="workspace">
         <form className="generator panel" onSubmit={submit}>
           <div className="section-heading">
@@ -195,24 +308,44 @@ export function App() {
 
           {mode === "image" && (
             <label>
-              <span>Input image path</span>
-              <input
-                value={imagePath}
-                onChange={(event) => setImagePath(event.target.value)}
-                placeholder="C:\\images\\reference.png"
-                required
-              />
+              <span>Input image</span>
+              <div className="input-with-button">
+                <input
+                  value={imagePath}
+                  onChange={(event) => setImagePath(event.target.value)}
+                  placeholder="Choose a reference image"
+                  required
+                />
+                <button
+                  className="secondary inline"
+                  type="button"
+                  disabled={!desktopReady}
+                  onClick={() => void chooseImage()}
+                >
+                  Browse
+                </button>
+              </div>
             </label>
           )}
 
           <label>
             <span>Wan2.2-TI2V-5B model folder</span>
-            <input
-              value={checkpointDir}
-              onChange={(event) => setCheckpointDir(event.target.value)}
-              placeholder="C:\\AI\\models\\Wan2.2-TI2V-5B"
-              required
-            />
+            <div className="input-with-button">
+              <input
+                value={checkpointDir}
+                onChange={(event) => setCheckpointDir(event.target.value)}
+                placeholder="Choose the downloaded model folder"
+                required
+              />
+              <button
+                className="secondary inline"
+                type="button"
+                disabled={!desktopReady}
+                onClick={() => void chooseCheckpointDir()}
+              >
+                Browse
+              </button>
+            </div>
           </label>
 
           <div className="field-row">
@@ -237,13 +370,16 @@ export function App() {
             </label>
           </div>
 
-          <button className="generate" disabled={submitting || !health?.providerReady}>
+          <button
+            className="generate"
+            disabled={submitting || !health?.providerReady || !checkpointDir}
+          >
             {submitting ? "Starting…" : "Generate video"}
           </button>
 
           {!health?.providerReady && (
             <p className="hint">
-              Set WAN22_SOURCE_DIR to the official Wan2.2 checkout before generating.
+              Install or select the Wan runtime before generating.
             </p>
           )}
         </form>
@@ -264,6 +400,10 @@ export function App() {
               <div>
                 <dt>Backend</dt>
                 <dd>{health?.status === "ok" ? "Connected" : "Offline"}</dd>
+              </div>
+              <div>
+                <dt>Desktop bridge</dt>
+                <dd>{desktopReady ? "Ready" : "Browser preview"}</dd>
               </div>
             </dl>
             <button className="secondary" type="button" onClick={() => void refreshRuntime()}>
