@@ -41,6 +41,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [installingRuntime, setInstallingRuntime] = useState(false);
+  const [settingUpPython, setSettingUpPython] = useState(false);
+  const [pythonReady, setPythonReady] = useState(false);
   const [desktopReady, setDesktopReady] = useState(false);
   const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
 
@@ -74,6 +76,9 @@ export function App() {
         const config = await desktop.getConfig();
         if (!cancelled && config.checkpointDir) {
           setCheckpointDir(config.checkpointDir);
+        }
+        if (!cancelled && config.pythonPath) {
+          setPythonReady(true);
         }
       }
 
@@ -201,6 +206,27 @@ export function App() {
     if (selected) setImagePath(selected);
   }
 
+  async function setupPythonRuntime() {
+    const desktop = window.wanDesktop;
+    if (!desktop) return;
+
+    setSettingUpPython(true);
+    setError(null);
+    try {
+      const result = await desktop.setupPythonRuntime();
+      if (!result.ok) {
+        throw new Error(result.error || result.output || "Python runtime setup failed");
+      }
+      setPythonReady(true);
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      await refreshRuntime();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSettingUpPython(false);
+    }
+  }
+
   async function installRuntime() {
     const desktop = window.wanDesktop;
     if (!desktop) {
@@ -316,14 +342,28 @@ export function App() {
               data folder and remember it automatically.
             </p>
           </div>
-          <button
-            className="generate compact"
-            type="button"
-            disabled={!desktopReady || installingRuntime}
-            onClick={() => void installRuntime()}
-          >
-            {installingRuntime ? "Installing runtime…" : "Install Wan 2.2 runtime"}
-          </button>
+          <div className="setup-actions">
+            <button
+              className="secondary"
+              type="button"
+              disabled={!desktopReady || installingRuntime}
+              onClick={() => void installRuntime()}
+            >
+              {installingRuntime ? "Installing Wan…" : "1. Install Wan runtime"}
+            </button>
+            <button
+              className="generate compact"
+              type="button"
+              disabled={!desktopReady || settingUpPython || pythonReady}
+              onClick={() => void setupPythonRuntime()}
+            >
+              {settingUpPython
+                ? "Setting up Python/CUDA…"
+                : pythonReady
+                  ? "Python/CUDA ready"
+                  : "2. Setup Python/CUDA"}
+            </button>
+          </div>
         </section>
       )}
 
