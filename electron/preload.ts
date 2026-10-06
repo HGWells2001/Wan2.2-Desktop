@@ -1,5 +1,22 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+type ProgressPayload = {
+  percent: number;
+  phase: string;
+};
+
+function onProgress(
+  channel: "desktop:wan-progress" | "desktop:python-progress",
+  callback: (progress: ProgressPayload) => void,
+) {
+  const listener = (_event: Electron.IpcRendererEvent, progress: ProgressPayload) => {
+    callback(progress);
+  };
+
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld("wanDesktop", {
   platform: process.platform,
   getConfig: () => ipcRenderer.invoke("desktop:get-config"),
@@ -9,4 +26,8 @@ contextBridge.exposeInMainWorld("wanDesktop", {
     ipcRenderer.invoke("desktop:save-config", patch),
   installWanRuntime: () => ipcRenderer.invoke("desktop:install-wan-runtime"),
   setupPythonRuntime: () => ipcRenderer.invoke("desktop:setup-python-runtime"),
+  onWanProgress: (callback: (progress: ProgressPayload) => void) =>
+    onProgress("desktop:wan-progress", callback),
+  onPythonProgress: (callback: (progress: ProgressPayload) => void) =>
+    onProgress("desktop:python-progress", callback),
 });
