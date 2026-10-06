@@ -11,12 +11,20 @@ type Gpu = {
   name: string;
   total_vram_mb: number | null;
   driver_version: string | null;
+  source: string;
 };
 
 type Hardware = {
   os: string;
   machine: string;
+  nvidia_gpu_detected: boolean;
+  nvidia_driver_detected: boolean;
   cuda_available: boolean;
+  cuda_version: string | null;
+  torch_available: boolean;
+  torch_version: string | null;
+  detection_sources: string[];
+  diagnostics: string[];
   gpus: Gpu[];
 };
 
@@ -203,14 +211,16 @@ export function App() {
 
   const gpuSummary = useMemo(() => {
     if (!hardware) return "Checking GPU…";
-    if (!hardware.cuda_available || hardware.gpus.length === 0) return "No NVIDIA GPU detected";
+    if (!hardware.nvidia_gpu_detected || hardware.gpus.length === 0) {
+      return "No NVIDIA GPU detected";
+    }
 
     return hardware.gpus
       .map((gpu) => {
         const vram = gpu.total_vram_mb
           ? `${(gpu.total_vram_mb / 1024).toFixed(0)} GB`
-          : "VRAM unknown";
-        return `${gpu.name} · ${vram}`;
+          : null;
+        return [gpu.name, vram].filter(Boolean).join(" · ");
       })
       .join(", ");
   }, [hardware]);
@@ -617,8 +627,38 @@ export function App() {
                 <dd>{gpuSummary}</dd>
               </div>
               <div>
+                <dt>NVIDIA driver</dt>
+                <dd>
+                  {hardware?.nvidia_driver_detected
+                    ? hardware.gpus.find((gpu) => gpu.driver_version)?.driver_version ?? "Detected"
+                    : "Not detected"}
+                </dd>
+              </div>
+              <div>
+                <dt>PyTorch</dt>
+                <dd>
+                  {hardware?.torch_available
+                    ? hardware.torch_version ?? "Installed"
+                    : "Not available"}
+                </dd>
+              </div>
+              <div>
                 <dt>CUDA</dt>
-                <dd>{hardware?.cuda_available ? "Available" : "Not detected"}</dd>
+                <dd>
+                  {hardware?.cuda_available
+                    ? `Available${hardware.cuda_version ? ` · CUDA ${hardware.cuda_version}` : ""}`
+                    : hardware?.torch_available
+                      ? "PyTorch loaded, CUDA unavailable"
+                      : "Waiting for Python/CUDA setup"}
+                </dd>
+              </div>
+              <div>
+                <dt>Detection</dt>
+                <dd>
+                  {hardware?.detection_sources?.length
+                    ? hardware.detection_sources.join(", ")
+                    : "No detection source succeeded"}
+                </dd>
               </div>
               <div>
                 <dt>Backend</dt>
@@ -629,6 +669,17 @@ export function App() {
                 <dd>{desktopReady ? "Ready" : "Browser preview"}</dd>
               </div>
             </dl>
+            {hardware?.diagnostics?.length ? (
+              <details className="hardware-diagnostics">
+                <summary>Hardware diagnostics</summary>
+                <ul>
+                  {hardware.diagnostics.map((line, index) => (
+                    <li key={index}>{line}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+
             <button className="secondary" type="button" onClick={() => void refreshRuntime()}>
               Refresh hardware
             </button>
