@@ -41,16 +41,17 @@ def main() -> int:
     else:
         checks["cudaAvailable"] = False
 
-    required = [
-        bool(checks["generatePy"]),
-        bool(checks["torch"]),
-        bool(checks["wan"]),
-        bool(checks["fastapi"]),
-        bool(checks["uvicorn"]),
-        bool(checks["huggingfaceHub"]),
-        bool(checks["cudaAvailable"]),
-    ]
-    checks["ok"] = all(required)
+    checks["ok"] = all(
+        [
+            bool(checks["generatePy"]),
+            bool(checks["torch"]),
+            bool(checks["wan"]),
+            bool(checks["fastapi"]),
+            bool(checks["uvicorn"]),
+            bool(checks["huggingfaceHub"]),
+            bool(checks["cudaAvailable"]),
+        ]
+    )
 
     print(json.dumps(checks))
     return 0 if checks["ok"] else 2
