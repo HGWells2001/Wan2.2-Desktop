@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
+import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,11 +10,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from .hardware import detect_hardware_dict
 from .jobs import JobManager
 from .providers.wan22 import SUPPORTED_TASKS, Wan22Provider
-from .schemas import GenerationRequest
+from .schemas import GenerationRequest, ModelDownloadRequest
 
 app = FastAPI(title="Wan2.2 Desktop Backend", version="0.2.0")
 provider = Wan22Provider()
 jobs = JobManager()
+model_downloads = JobManager()
 
 app.add_middleware(
     CORSMiddleware,
@@ -109,5 +111,42 @@ def cancel_generation(job_id: str) -> dict[str, object]:
     if not jobs.cancel(job_id):
         raise HTTPException(status_code=409, detail="Job cannot be cancelled")
     job = jobs.get(job_id)
+    assert job is not None
+    return job.public_dict()
+
+
+@app.post("/api/models/download")
+def download_model(request: ModelDownloadRequest) -> dict[str, object]:
+    destination = Path(request.destination).expanduser().resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+
+    model_dir = destination / request.repo_id.split("/")[-1]
+    command = [
+        sys.executable,
+        "-m",
+        "app.model_download",
+        "--repo-id",
+        request.repo_id,
+        "--local-dir",
+        str(model_dir),
+    ]
+
+    job = model_downloads.create(command=command, output_path=model_dir)
+    return job.public_dict()
+
+
+@app.get("/api/models/download/{job_id}")
+def get_model_download(job_id: str) -> dict[str, object]:
+    job = model_downloads.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Model download job not found")
+    return job.public_dict()
+
+
+@app.post("/api/models/download/{job_id}/cancel")
+def cancel_model_download(job_id: str) -> dict[str, object]:
+    if not model_downloads.cancel(job_id):
+        raise HTTPException(status_code=409, detail="Download cannot be cancelled")
+    job = model_downloads.get(job_id)
     assert job is not None
     return job.public_dict()
