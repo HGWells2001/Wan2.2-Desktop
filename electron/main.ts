@@ -36,6 +36,8 @@ type NativeGpuInfo = {
 };
 
 let backendProcess: ChildProcess | null = null;
+let backendLogTail = "";
+let backendLastExitCode: number | null = null;
 
 function projectRoot() {
   return path.resolve(__dirname, "..");
@@ -264,17 +266,26 @@ function startBackend() {
     },
   );
 
+  backendLogTail = "";
+  backendLastExitCode = null;
+
   backendProcess.stdout?.on("data", (chunk) => {
-    console.log(`[backend] ${String(chunk).trimEnd()}`);
+    const line = String(chunk);
+    backendLogTail = (backendLogTail + line).slice(-12000);
+    console.log(`[backend] ${line.trimEnd()}`);
   });
   backendProcess.stderr?.on("data", (chunk) => {
-    console.error(`[backend] ${String(chunk).trimEnd()}`);
+    const line = String(chunk);
+    backendLogTail = (backendLogTail + line).slice(-12000);
+    console.error(`[backend] ${line.trimEnd()}`);
   });
   backendProcess.on("error", (error) => {
+    backendLogTail = (backendLogTail + "\n" + error.message).slice(-12000);
     console.error(`[backend] failed to start: ${error.message}`);
     backendProcess = null;
   });
-  backendProcess.on("exit", () => {
+  backendProcess.on("exit", (code) => {
+    backendLastExitCode = code;
     backendProcess = null;
   });
 }
@@ -315,6 +326,27 @@ function createWindow() {
 function registerIpc() {
   ipcMain.handle("desktop:get-config", () => readConfig());
   ipcMain.handle("desktop:get-native-gpu", () => detectNativeGpu());
+  ipcMain.handle("desktop:get-backend-status", async () => {
+    let apiReachable = false;
+    let apiStatus: number | null = null;
+
+    try {
+      const response = await net.fetch("http://127.0.0.1:8000/api/health");
+      apiReachable = response.ok;
+      apiStatus = response.status;
+    } catch {
+      apiReachable = false;
+    }
+
+    return {
+      processRunning: Boolean(backendProcess && backendProcess.exitCode === null),
+      apiReachable,
+      apiStatus,
+      pythonPath: pythonExecutable(),
+      lastExitCode: backendLastExitCode,
+      logTail: backendLogTail,
+    };
+  });
 
   ipcMain.handle("desktop:choose-directory", async (_event, title: string) => {
     const result = await dialog.showOpenDialog({
@@ -338,8 +370,16 @@ function registerIpc() {
   ipcMain.handle(
     "desktop:save-config",
     (_event, patch: Partial<DesktopConfig>) => {
+      const previous = readConfig();
       const next = writeConfig(patch);
-      restartBackend();
+      const backendConfigChanged =
+        patch.wanSourceDir !== undefined && patch.wanSourceDir !== previous.wanSourceDir ||
+        patch.outputDir !== undefined && patch.outputDir !== previous.outputDir ||
+        patch.pythonPath !== undefined && patch.pythonPath !== previous.pythonPath;
+
+      if (backendConfigChanged) {
+        restartBackend();
+      }
       return next;
     },
   );
