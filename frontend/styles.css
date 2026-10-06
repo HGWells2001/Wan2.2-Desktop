@@ -472,3 +472,28 @@ code {
   grid-column: 1 / -1;
   width: 100%;
 }
+
+
+.hardware-diagnostics {
+  margin-top: 14px;
+  border-top: 1px solid #232837;
+  padding-top: 12px;
+  color: #8f98aa;
+  font-size: 12px;
+}
+
+.hardware-diagnostics summary {
+  cursor: pointer;
+  color: #b6bdca;
+  font-weight: 700;
+}
+
+.hardware-diagnostics ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.hardware-diagnostics li {
+  margin: 6px 0;
+  line-height: 1.45;
+}
