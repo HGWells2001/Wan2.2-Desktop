@@ -8,6 +8,7 @@ declare global {
         wanSourceDir?: string;
         checkpointDir?: string;
         outputDir?: string;
+        pythonPath?: string;
       }>;
       chooseDirectory(title: string): Promise<string | null>;
       chooseImage(): Promise<string | null>;
@@ -15,11 +16,18 @@ declare global {
         wanSourceDir?: string;
         checkpointDir?: string;
         outputDir?: string;
+        pythonPath?: string;
       }>;
       installWanRuntime(): Promise<{
         ok: boolean;
         path?: string;
         reused?: boolean;
+        error?: string;
+        output?: string;
+      }>;
+      setupPythonRuntime(): Promise<{
+        ok: boolean;
+        pythonPath?: string;
         error?: string;
         output?: string;
       }>;
