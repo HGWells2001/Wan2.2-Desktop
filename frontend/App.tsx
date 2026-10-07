@@ -283,7 +283,7 @@ export function App() {
         await refreshBackendStatus();
         const config = await desktop.getConfig();
         const restoredModelId = config.selectedModelId ?? "ti2v-5b";
-        const restoredPaths = {
+        const restoredPaths: Record<string, string> = {
           ...(config.checkpointDir ? { "ti2v-5b": config.checkpointDir } : {}),
           ...(config.modelPaths ?? {}),
         };
