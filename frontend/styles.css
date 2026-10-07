@@ -513,3 +513,14 @@ code {
   font-size: 10px;
   line-height: 1.45;
 }
+
+
+.machine-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.machine-actions .secondary {
+  margin-top: 14px;
+}
