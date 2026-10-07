@@ -94,19 +94,35 @@ Get-Content $WanRequirements |
 & $PythonExe -m pip install -r $FilteredRequirements
 Assert-ExitCode "Wan dependency installation failed."
 
-Write-Step "Installing Wan Windows compatibility dependencies..."
+Write-Step "Installing Wan TI2V Windows dependencies..."
 $WanCompatDependencies = @(
   "einops>=0.8,<0.9",
-  "decord==0.6.0",
-  "librosa>=0.10,<0.12",
-  "peft>=0.17,<0.18",
   "Pillow>=10",
   "safetensors>=0.4,<1",
   "regex",
   "sentencepiece>=0.2,<0.3"
 )
-& $PythonExe -m pip install @WanCompatDependencies
-Assert-ExitCode "Wan Windows compatibility dependency installation failed."
+foreach ($Dependency in $WanCompatDependencies) {
+  Write-Step "Installing $Dependency..."
+  & $PythonExe -m pip install $Dependency
+  Assert-ExitCode "Failed to install Wan dependency: $Dependency"
+}
+
+Write-Step "Patching Wan imports for desktop-supported tasks..."
+$WanInit = Join-Path $WanSourceDir "wan\__init__.py"
+$WanInitContent = @'
+# Wan2.2 Desktop Windows compatibility shim.
+# The desktop currently supports T2V, I2V and TI2V. S2V and Animate are not
+# imported here because upstream loads their optional audio/animation
+# dependencies unconditionally, even when those tasks are not used.
+from . import configs, distributed, modules
+from .image2video import WanI2V
+from .text2video import WanT2V
+from .textimage2video import WanTI2V
+
+__all__ = ["WanI2V", "WanT2V", "WanTI2V", "configs", "distributed", "modules"]
+'@
+Set-Content -LiteralPath $WanInit -Value $WanInitContent -Encoding UTF8
 
 Write-Step "Installing Wan source package..."
 & $PythonExe -m pip install -e $WanSourceDir --no-deps
