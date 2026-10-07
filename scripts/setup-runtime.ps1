@@ -94,6 +94,20 @@ Get-Content $WanRequirements |
 & $PythonExe -m pip install -r $FilteredRequirements
 Assert-ExitCode "Wan dependency installation failed."
 
+Write-Step "Installing Wan Windows compatibility dependencies..."
+$WanCompatDependencies = @(
+  "einops>=0.8,<0.9",
+  "decord==0.6.0",
+  "librosa>=0.10,<0.12",
+  "peft>=0.17,<0.18",
+  "Pillow>=10",
+  "safetensors>=0.4,<1",
+  "regex",
+  "sentencepiece>=0.2,<0.3"
+)
+& $PythonExe -m pip install @WanCompatDependencies
+Assert-ExitCode "Wan Windows compatibility dependency installation failed."
+
 Write-Step "Installing Wan source package..."
 & $PythonExe -m pip install -e $WanSourceDir --no-deps
 Assert-ExitCode "Wan package installation failed."
