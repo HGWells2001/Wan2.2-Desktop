@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, net } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
+import * as nodeNet from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,6 +39,41 @@ type NativeGpuInfo = {
 let backendProcess: ChildProcess | null = null;
 let backendLogTail = "";
 let backendLastExitCode: number | null = null;
+let backendPort = 0;
+
+function findAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = nodeNet.createServer();
+
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (!port) {
+          reject(new Error("Windows did not provide a free local port."));
+          return;
+        }
+
+        resolve(port);
+      });
+    });
+  });
+}
+
+function apiBaseUrl() {
+  if (!backendPort) {
+    throw new Error("Backend port has not been initialized.");
+  }
+  return `http://127.0.0.1:${backendPort}/api`;
+}
 
 function projectRoot() {
   return path.resolve(__dirname, "..");
@@ -253,7 +289,11 @@ function startBackend() {
   const config = readConfig();
   backendProcess = spawn(
     pythonExecutable(),
-    ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+    [
+      "-m", "uvicorn", "app.main:app",
+      "--host", "127.0.0.1",
+      "--port", String(backendPort),
+    ],
     {
       cwd: backendDir(),
       env: {
@@ -325,13 +365,14 @@ function createWindow() {
 
 function registerIpc() {
   ipcMain.handle("desktop:get-config", () => readConfig());
+  ipcMain.handle("desktop:get-api-base-url", () => apiBaseUrl());
   ipcMain.handle("desktop:get-native-gpu", () => detectNativeGpu());
   ipcMain.handle("desktop:get-backend-status", async () => {
     let apiReachable = false;
     let apiStatus: number | null = null;
 
     try {
-      const response = await net.fetch("http://127.0.0.1:8000/api/health");
+      const response = await net.fetch(`${apiBaseUrl()}/health`);
       apiReachable = response.ok;
       apiStatus = response.status;
     } catch {
@@ -343,6 +384,8 @@ function registerIpc() {
       apiReachable,
       apiStatus,
       pythonPath: pythonExecutable(),
+      port: backendPort,
+      apiBaseUrl: apiBaseUrl(),
       lastExitCode: backendLastExitCode,
       logTail: backendLogTail,
     };
@@ -577,7 +620,9 @@ function registerIpc() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  backendPort = await findAvailablePort();
+  console.log(`[backend] selected local port ${backendPort}`);
   registerIpc();
   startBackend();
   createWindow();
