@@ -72,6 +72,8 @@ def download_profile(model_id: str, model_dir: Path) -> None:
             "text_encoder/**",
             "tokenizer/**",
             "vae/**",
+            "transformer/config.json",
+            "transformer_2/config.json",
         ],
     )
 
