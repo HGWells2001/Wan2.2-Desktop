@@ -171,6 +171,16 @@ export function App() {
     [modelProfiles, selectedModelId],
   );
 
+  useEffect(() => {
+    if (!selectedProfile.sizes.includes(selectedSize)) {
+      setSelectedSize(selectedProfile.default_size);
+    }
+    if (!selectedProfile.modes.includes(mode)) {
+      setMode("text");
+      setImagePath("");
+    }
+  }, [selectedProfile, selectedSize, mode]);
+
   async function refreshNativeGpu() {
     const desktop = window.wanDesktop;
     if (!desktop) return;
@@ -613,7 +623,13 @@ export function App() {
 
     try {
       if (window.wanDesktop && checkpointDir) {
-        await window.wanDesktop.saveConfig({ checkpointDir });
+        const nextPaths = { ...modelPaths, [selectedModelId]: checkpointDir };
+        setModelPaths(nextPaths);
+        await window.wanDesktop.saveConfig({
+          selectedModelId,
+          modelPaths: nextPaths,
+          ...(selectedModelId === "ti2v-5b" ? { checkpointDir } : {}),
+        });
       }
 
       const response = await fetch(`${API}/generations`, {
