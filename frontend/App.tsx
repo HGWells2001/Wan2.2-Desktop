@@ -56,6 +56,17 @@ type GenerationJob = {
   error?: string | null;
 };
 
+type PromptOptimizerMode = "off" | "fast" | "ai";
+
+type PromptOptimizationResponse = {
+  original_prompt: string;
+  optimized_prompt: string;
+  optimizer: "fast" | "ai";
+  model?: string | null;
+  device?: string | null;
+  message?: string | null;
+};
+
 function ProgressBar({
   percent,
   phase,
@@ -95,6 +106,10 @@ export function App() {
   const [nativeGpu, setNativeGpu] = useState<NativeGpu | null>(null);
   const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [promptOptimizer, setPromptOptimizer] = useState<PromptOptimizerMode>("fast");
+  const [optimizingPrompt, setOptimizingPrompt] = useState(false);
+  const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
+  const [promptOptimizationNote, setPromptOptimizationNote] = useState<string | null>(null);
   const [checkpointDir, setCheckpointDir] = useState("");
   const [imagePath, setImagePath] = useState("");
   const [mode, setMode] = useState<"text" | "image">("text");
@@ -438,6 +453,59 @@ export function App() {
     }
   }
 
+  async function optimizePrompt() {
+    const sourcePrompt = prompt.trim();
+    if (!sourcePrompt) {
+      setError("Write a prompt before optimizing it.");
+      return;
+    }
+    if (promptOptimizer === "off") return;
+
+    setOptimizingPrompt(true);
+    setError(null);
+    setPromptOptimizationNote(null);
+
+    try {
+      const response = await fetch(`${API}/prompts/optimize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: sourcePrompt,
+          optimizer: promptOptimizer,
+          video_mode: mode,
+          seed: -1,
+        }),
+      });
+
+      const payload = (await response.json()) as PromptOptimizationResponse & {
+        detail?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.detail ?? "Prompt optimization failed");
+      }
+
+      setOriginalPrompt((current) => current ?? sourcePrompt);
+      setPrompt(payload.optimized_prompt);
+      setPromptOptimizationNote(
+        payload.optimizer === "ai"
+          ? `Optimized with ${payload.model ?? "Qwen"}${payload.device ? ` · ${payload.device}` : ""}`
+          : "Fast Wan2.2 optimization applied",
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setOptimizingPrompt(false);
+    }
+  }
+
+  function restoreOriginalPrompt() {
+    if (originalPrompt === null) return;
+    setPrompt(originalPrompt);
+    setOriginalPrompt(null);
+    setPromptOptimizationNote(null);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
@@ -592,12 +660,76 @@ export function App() {
             <span>Prompt</span>
             <textarea
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                setPromptOptimizationNote(null);
+              }}
               placeholder="Describe the shot, subject, movement, camera and mood…"
               rows={7}
               required
             />
           </label>
+
+          <div className="prompt-optimizer">
+            <div className="prompt-optimizer-controls">
+              <label className="prompt-optimizer-mode">
+                <span>Prompt optimizer</span>
+                <select
+                  value={promptOptimizer}
+                  onChange={(event) =>
+                    setPromptOptimizer(event.target.value as PromptOptimizerMode)
+                  }
+                >
+                  <option value="off">Off · use prompt unchanged</option>
+                  <option value="fast">Fast · instant Wan tuning</option>
+                  <option value="ai">AI · Qwen2.5-3B</option>
+                </select>
+              </label>
+
+              <button
+                className="secondary prompt-optimize-button"
+                type="button"
+                disabled={
+                  promptOptimizer === "off" ||
+                  optimizingPrompt ||
+                  !pythonReady ||
+                  !prompt.trim()
+                }
+                onClick={() => void optimizePrompt()}
+              >
+                {optimizingPrompt
+                  ? "Optimizing…"
+                  : promptOptimizer === "ai"
+                    ? "✨ Optimize with AI"
+                    : "✨ Optimize prompt"}
+              </button>
+
+              {originalPrompt !== null ? (
+                <button
+                  className="secondary prompt-restore-button"
+                  type="button"
+                  disabled={optimizingPrompt}
+                  onClick={restoreOriginalPrompt}
+                >
+                  Restore original
+                </button>
+              ) : null}
+            </div>
+
+            <p className="prompt-optimizer-hint">
+              {promptOptimizer === "off"
+                ? "The prompt is sent to Wan2.2 exactly as written."
+                : promptOptimizer === "ai"
+                  ? "Uses Qwen2.5-3B to rewrite the prompt in English for Wan2.2. First use may download the Qwen model."
+                  : mode === "image"
+                    ? "Instant optimizer: preserves the reference image and strengthens motion, camera and temporal consistency."
+                    : "Instant optimizer: strengthens action, camera, lighting and temporal consistency without loading another model."}
+            </p>
+
+            {promptOptimizationNote ? (
+              <p className="prompt-optimizer-status">{promptOptimizationNote}</p>
+            ) : null}
+          </div>
 
           {mode === "image" && (
             <label>
