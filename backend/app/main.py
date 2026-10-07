@@ -9,11 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .hardware import detect_hardware_dict
 from .jobs import JobManager
+from .model_profiles import get_model_profile, public_model_catalog
 from .prompt_optimizer import optimize_prompt_ai, optimize_prompt_fast
+from .providers.a14b_gguf import build_command as build_a14b_gguf_command
 from .providers.wan22 import SUPPORTED_TASKS, Wan22Provider
 from .schemas import GenerationRequest, ModelDownloadRequest, PromptOptimizationRequest
 
-app = FastAPI(title="Wan2.2 Desktop Backend", version="0.2.7")
+app = FastAPI(title="Wan2.2 Desktop Backend", version="0.2.8")
 provider = Wan22Provider()
 jobs = JobManager()
 model_downloads = JobManager()
@@ -54,6 +56,14 @@ def provider_info() -> dict[str, object]:
         "ready": provider.is_ready(),
         "sourceDir": str(provider.source_dir) if provider.source_dir else None,
         "tasks": SUPPORTED_TASKS,
+    }
+
+
+@app.get("/api/models")
+def model_catalog() -> dict[str, object]:
+    return {
+        "defaultModelId": "ti2v-5b",
+        "models": public_model_catalog(),
     }
 
 
@@ -109,41 +119,69 @@ def create_generation(request: GenerationRequest) -> dict[str, object]:
     if not checkpoint_dir.is_dir():
         raise HTTPException(status_code=400, detail="Checkpoint directory not found")
 
+    try:
+        profile = get_model_profile(request.model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     image_path = None
     if request.image_path:
         image_path = Path(request.image_path).expanduser().resolve()
         if not image_path.is_file():
             raise HTTPException(status_code=400, detail="Input image not found")
 
+    mode = "image" if image_path is not None else "text"
+    if mode not in profile["modes"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{profile['name']} does not support {mode}-to-video in this build.",
+        )
+
+    if request.size not in profile["sizes"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported size {request.size!r} for {profile['name']}.",
+        )
+
     output_root = Path(
         os.getenv("WAN22_OUTPUT_DIR", Path.home() / "Wan2.2-Desktop" / "outputs")
     ).expanduser()
     output_root.mkdir(parents=True, exist_ok=True)
-    output_path = output_root / "pending.mp4"
 
-    try:
-        command = provider.build_command(
-            task=request.task,
-            checkpoint_dir=checkpoint_dir,
-            prompt=request.prompt,
-            size=request.size,
-            output_path=output_path,
-            image_path=image_path,
-            seed=request.seed,
-            sample_steps=request.sample_steps,
-            offload_model=request.offload_model,
-            convert_model_dtype=request.convert_model_dtype,
-            t5_cpu=request.t5_cpu,
-        )
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    # Allocate the final filename before launching the process.
     import uuid
 
     generation_id = uuid.uuid4().hex
     output_path = output_root / f"{generation_id}.mp4"
-    command[command.index("--save_file") + 1] = str(output_path)
+
+    try:
+        if profile["engine"] == "wan-upstream":
+            command = provider.build_command(
+                task=str(profile["task"]),
+                checkpoint_dir=checkpoint_dir,
+                prompt=request.prompt,
+                size=request.size,
+                output_path=output_path,
+                image_path=image_path,
+                seed=request.seed,
+                sample_steps=request.sample_steps,
+                offload_model=request.offload_model,
+                convert_model_dtype=request.convert_model_dtype,
+                t5_cpu=request.t5_cpu,
+            )
+        elif profile["engine"] == "diffusers-gguf":
+            command = build_a14b_gguf_command(
+                model_id=request.model_id,
+                model_dir=checkpoint_dir,
+                prompt=request.prompt,
+                size=request.size,
+                output_path=output_path,
+                seed=request.seed,
+                sample_steps=request.sample_steps,
+            )
+        else:
+            raise ValueError(f"Unsupported model engine: {profile['engine']}")
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     job = jobs.create(command=command, output_path=output_path)
     return job.public_dict()
@@ -171,13 +209,18 @@ def download_model(request: ModelDownloadRequest) -> dict[str, object]:
     destination = Path(request.destination).expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
 
-    model_dir = destination / request.repo_id.split("/")[-1]
+    try:
+        profile = get_model_profile(request.model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    model_dir = destination / str(profile["folder_name"])
     command = [
         sys.executable,
         "-m",
         "app.model_download",
-        "--repo-id",
-        request.repo_id,
+        "--model-id",
+        request.model_id,
         "--local-dir",
         str(model_dir),
     ]
