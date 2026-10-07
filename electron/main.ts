@@ -454,6 +454,7 @@ function registerIpc() {
       [/Installing Wan2\.2 Desktop backend/i, { percent: 36, phase: "Installing desktop backend" }],
       [/Installing PyTorch CUDA runtime/i, { percent: 46, phase: "Installing PyTorch/CUDA" }],
       [/Installing Wan dependencies/i, { percent: 68, phase: "Installing Wan dependencies" }],
+      [/Installing Wan Windows compatibility dependencies/i, { percent: 82, phase: "Installing Wan compatibility modules" }],
       [/Installing Wan source package/i, { percent: 90, phase: "Installing Wan runtime package" }],
       [/Using PyTorch SDPA/i, { percent: 94, phase: "Configuring attention backend" }],
       [/Running runtime diagnostics/i, { percent: 97, phase: "Checking GPU runtime" }],
