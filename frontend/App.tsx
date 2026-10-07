@@ -693,7 +693,8 @@ export function App() {
                   promptOptimizer === "off" ||
                   optimizingPrompt ||
                   !pythonReady ||
-                  !prompt.trim()
+                  !prompt.trim() ||
+                  ["queued", "running"].includes(job?.status ?? "")
                 }
                 onClick={() => void optimizePrompt()}
               >
@@ -828,7 +829,12 @@ export function App() {
 
           <button
             className="generate"
-            disabled={submitting || !health?.providerReady || !checkpointDir}
+            disabled={
+              submitting ||
+              optimizingPrompt ||
+              !health?.providerReady ||
+              !checkpointDir
+            }
           >
             {submitting ? "Starting…" : "Generate video"}
           </button>
