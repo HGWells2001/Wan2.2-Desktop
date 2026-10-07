@@ -32,14 +32,18 @@ declare global {
         checkpointDir?: string;
         outputDir?: string;
         pythonPath?: string;
+        selectedModelId?: string;
+        modelPaths?: Record<string, string>;
       }>;
       chooseDirectory(title: string): Promise<string | null>;
       chooseImage(): Promise<string | null>;
-      saveConfig(patch: Record<string, string | undefined>): Promise<{
+      saveConfig(patch: Record<string, unknown>): Promise<{
         wanSourceDir?: string;
         checkpointDir?: string;
         outputDir?: string;
         pythonPath?: string;
+        selectedModelId?: string;
+        modelPaths?: Record<string, string>;
       }>;
       installWanRuntime(): Promise<{
         ok: boolean;
