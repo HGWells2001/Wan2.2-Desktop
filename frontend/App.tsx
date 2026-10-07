@@ -372,7 +372,12 @@ export function App() {
     try {
       const result = await desktop.setupPythonRuntime();
       if (!result.ok) {
-        throw new Error(result.error || result.output || "Python runtime setup failed");
+        const outputTail = result.output?.trim().slice(-7000);
+        const message = [
+          result.error || "Python runtime setup failed",
+          outputTail || null,
+        ].filter(Boolean).join("\n\n");
+        throw new Error(message);
       }
       setPythonReady(true);
       setPythonProgress({ percent: 100, phase: "Python/CUDA ready" });
