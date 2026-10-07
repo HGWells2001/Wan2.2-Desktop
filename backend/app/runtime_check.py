@@ -31,9 +31,6 @@ def main() -> int:
 
     required_modules = [
         "einops",
-        "decord",
-        "librosa",
-        "peft",
         "PIL",
         "safetensors",
         "regex",
