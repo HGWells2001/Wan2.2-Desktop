@@ -41,6 +41,26 @@ class Wan22Provider(VideoGenerationProvider):
         root = self.source_dir
         return bool(root and (root / "generate.py").is_file())
 
+
+    @staticmethod
+    def _ensure_windows_compatibility(root: Path) -> None:
+        if os.name != "nt":
+            return
+
+        model_py = root / "wan" / "modules" / "model.py"
+        if not model_py.is_file():
+            return
+
+        content = model_py.read_text(encoding="utf-8")
+        direct_import = "from .attention import flash_attention"
+        fallback_import = "from .attention import attention as flash_attention"
+
+        if direct_import in content:
+            model_py.write_text(
+                content.replace(direct_import, fallback_import),
+                encoding="utf-8",
+            )
+
     def build_command(
         self,
         *,
@@ -61,6 +81,8 @@ class Wan22Provider(VideoGenerationProvider):
             raise RuntimeError(
                 "WAN22_SOURCE_DIR is not configured or does not contain generate.py"
             )
+
+        self._ensure_windows_compatibility(root)
 
         if task not in SUPPORTED_TASKS:
             raise ValueError(f"Unsupported Wan 2.2 task: {task}")
