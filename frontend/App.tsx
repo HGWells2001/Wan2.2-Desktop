@@ -820,9 +820,21 @@ export function App() {
               </details>
             ) : null}
 
-            <button className="secondary" type="button" onClick={() => void refreshHardware()}>
-              Refresh hardware
-            </button>
+            <div className="machine-actions">
+              <button className="secondary" type="button" onClick={() => void refreshHardware()}>
+                Refresh hardware
+              </button>
+              {runtimeInstalled && pythonReady ? (
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={settingUpPython}
+                  onClick={() => void setupPythonRuntime()}
+                >
+                  {settingUpPython ? "Repairing dependencies…" : "Repair Wan dependencies"}
+                </button>
+              ) : null}
+            </div>
           </section>
 
           <section className="panel job-panel">
