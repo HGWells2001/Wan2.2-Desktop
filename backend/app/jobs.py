@@ -95,7 +95,7 @@ class JobManager:
             job.phase = "Downloading"
         elif "load" in lower and ("model" in lower or "checkpoint" in lower):
             job.phase = "Loading model"
-        elif "sampling" in lower or "denois" in lower:
+        elif "generating video" in lower or "sampling" in lower or "denois" in lower:
             job.phase = "Generating frames"
         elif "sav" in lower and ("video" in lower or ".mp4" in lower):
             job.phase = "Saving video"
@@ -105,8 +105,18 @@ class JobManager:
         matches = _PERCENT_RE.findall(text)
         if matches:
             parsed = max(int(value) for value in matches)
+
+            if job.phase == "Loading model":
+                mapped = 10 + round(parsed * 0.35)
+            elif job.phase == "Generating frames":
+                mapped = 45 + round(parsed * 0.50)
+            elif job.phase == "Saving video":
+                mapped = 97
+            else:
+                mapped = parsed
+
             # Reserve 100 for a process that actually exits successfully.
-            job.progress = max(job.progress, min(parsed, 99))
+            job.progress = max(job.progress, min(mapped, 99))
 
     def _run(self, job: GenerationJob) -> None:
         job.status = JobStatus.running
@@ -120,6 +130,8 @@ class JobManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
 
