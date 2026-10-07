@@ -85,7 +85,7 @@ function ProgressBar({
   );
 }
 
-const API = "http://127.0.0.1:8000/api";
+let API = "http://127.0.0.1:8000/api";
 
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -200,6 +200,7 @@ export function App() {
       setDesktopReady(Boolean(desktop));
 
       if (desktop) {
+        API = await desktop.getApiBaseUrl();
         await refreshNativeGpu();
         await refreshBackendStatus();
         const config = await desktop.getConfig();
@@ -797,6 +798,8 @@ export function App() {
                 <summary>Backend diagnostics</summary>
                 <ul>
                   <li>Python: {backendStatus.pythonPath}</li>
+                  <li>API URL: {backendStatus.apiBaseUrl}</li>
+                  <li>Port: {backendStatus.port}</li>
                   <li>
                     Process: {backendStatus.processRunning ? "running" : "not running"}
                   </li>
