@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld("wanDesktop", {
   getBackendStatus: () => ipcRenderer.invoke("desktop:get-backend-status"),
   chooseDirectory: (title: string) => ipcRenderer.invoke("desktop:choose-directory", title),
   chooseImage: () => ipcRenderer.invoke("desktop:choose-image"),
-  saveConfig: (patch: Record<string, string | undefined>) =>
+  saveConfig: (patch: Record<string, unknown>) =>
     ipcRenderer.invoke("desktop:save-config", patch),
   installWanRuntime: () => ipcRenderer.invoke("desktop:install-wan-runtime"),
   setupPythonRuntime: () => ipcRenderer.invoke("desktop:setup-python-runtime"),
