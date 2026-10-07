@@ -16,6 +16,8 @@ type DesktopConfig = {
   checkpointDir?: string;
   outputDir?: string;
   pythonPath?: string;
+  selectedModelId?: string;
+  modelPaths?: Record<string, string>;
 };
 
 type ProcessResult = {
@@ -457,7 +459,7 @@ function registerIpc() {
       [/Installing Wan2\.2 Desktop backend/i, { percent: 36, phase: "Installing desktop backend" }],
       [/Installing PyTorch CUDA runtime/i, { percent: 46, phase: "Installing PyTorch/CUDA" }],
       [/Installing Wan dependencies/i, { percent: 68, phase: "Installing Wan dependencies" }],
-      [/Installing Wan TI2V Windows dependencies/i, { percent: 82, phase: "Installing TI2V compatibility modules" }],
+      [/Installing Wan model engine dependencies/i, { percent: 82, phase: "Installing Wan model engines" }],
       [/Patching Wan imports for desktop-supported tasks/i, { percent: 86, phase: "Applying Wan desktop compatibility patch" }],
       [/Patching Wan attention fallback for Windows/i, { percent: 89, phase: "Configuring PyTorch SDPA fallback" }],
       [/Installing Wan source package/i, { percent: 90, phase: "Installing Wan runtime package" }],
