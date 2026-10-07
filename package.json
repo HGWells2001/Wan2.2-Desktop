@@ -1,6 +1,6 @@
 {
   "name": "wan2-2-desktop",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Wan 2.2 video generation desktop app",
   "type": "module",
   "main": "dist-electron/main.js",
