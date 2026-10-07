@@ -25,6 +25,7 @@ function Assert-ExitCode([string]$Message) {
 $VenvDir = Join-Path $RuntimeRoot "python"
 $PythonExe = Join-Path $VenvDir "Scripts\python.exe"
 $WanRequirements = Join-Path $WanSourceDir "requirements.txt"
+$BackendInstallDir = Join-Path $RuntimeRoot "backend-install"
 $ToolsDir = Join-Path $RuntimeRoot "tools"
 $UvDir = Join-Path $ToolsDir "uv-$UvVersion"
 $UvExe = Join-Path $UvDir "uv.exe"
@@ -73,8 +74,13 @@ Write-Step "Updating pip tooling..."
 & $PythonExe -m pip install --upgrade pip setuptools wheel
 Assert-ExitCode "pip bootstrap failed."
 
+Write-Step "Preparing writable backend package..."
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $BackendInstallDir
+New-Item -ItemType Directory -Force -Path $BackendInstallDir | Out-Null
+Copy-Item -Path (Join-Path $BackendDir "*") -Destination $BackendInstallDir -Recurse -Force
+
 Write-Step "Installing Wan2.2 Desktop backend..."
-& $PythonExe -m pip install $BackendDir
+& $PythonExe -m pip install $BackendInstallDir
 Assert-ExitCode "Backend dependency installation failed."
 
 Write-Step "Installing PyTorch CUDA runtime..."
