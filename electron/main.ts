@@ -298,6 +298,8 @@ function startBackend() {
       cwd: backendDir(),
       env: {
         ...process.env,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8",
         ...(config.wanSourceDir ? { WAN22_SOURCE_DIR: config.wanSourceDir } : {}),
         ...(config.outputDir ? { WAN22_OUTPUT_DIR: config.outputDir } : {}),
       },
@@ -456,7 +458,8 @@ function registerIpc() {
       [/Installing PyTorch CUDA runtime/i, { percent: 46, phase: "Installing PyTorch/CUDA" }],
       [/Installing Wan dependencies/i, { percent: 68, phase: "Installing Wan dependencies" }],
       [/Installing Wan TI2V Windows dependencies/i, { percent: 82, phase: "Installing TI2V compatibility modules" }],
-      [/Patching Wan imports for desktop-supported tasks/i, { percent: 88, phase: "Applying Wan desktop compatibility patch" }],
+      [/Patching Wan imports for desktop-supported tasks/i, { percent: 86, phase: "Applying Wan desktop compatibility patch" }],
+      [/Patching Wan attention fallback for Windows/i, { percent: 89, phase: "Configuring PyTorch SDPA fallback" }],
       [/Installing Wan source package/i, { percent: 90, phase: "Installing Wan runtime package" }],
       [/Using PyTorch SDPA/i, { percent: 94, phase: "Configuring attention backend" }],
       [/Running runtime diagnostics/i, { percent: 97, phase: "Checking GPU runtime" }],
