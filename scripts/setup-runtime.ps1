@@ -100,13 +100,15 @@ Get-Content $WanRequirements |
 & $PythonExe -m pip install -r $FilteredRequirements
 Assert-ExitCode "Wan dependency installation failed."
 
-Write-Step "Installing Wan TI2V Windows dependencies..."
+Write-Step "Installing Wan model engine dependencies..."
 $WanCompatDependencies = @(
   "einops>=0.8,<0.9",
   "Pillow>=10",
   "safetensors>=0.4,<1",
   "regex",
-  "sentencepiece>=0.2,<0.3"
+  "sentencepiece>=0.2,<0.3",
+  "diffusers==0.41.0",
+  "gguf==0.19.0"
 )
 foreach ($Dependency in $WanCompatDependencies) {
   Write-Step "Installing $Dependency..."
