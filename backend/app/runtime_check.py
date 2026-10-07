@@ -35,6 +35,8 @@ def main() -> int:
         "safetensors",
         "regex",
         "sentencepiece",
+        "diffusers",
+        "gguf",
     ]
 
     dependency_checks: dict[str, object] = {}
