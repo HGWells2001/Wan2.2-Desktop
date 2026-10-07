@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -19,3 +21,10 @@ class GenerationRequest(BaseModel):
 class ModelDownloadRequest(BaseModel):
     repo_id: str = "Wan-AI/Wan2.2-TI2V-5B"
     destination: str
+
+
+class PromptOptimizationRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=8000)
+    optimizer: Literal["fast", "ai"] = "fast"
+    video_mode: Literal["text", "image"] = "text"
+    seed: int = -1
