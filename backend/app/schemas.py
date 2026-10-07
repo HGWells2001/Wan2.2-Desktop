@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class GenerationRequest(BaseModel):
+    model_id: str = "ti2v-5b"
     task: str = "ti2v-5B"
     prompt: str = Field(min_length=1, max_length=8000)
     checkpoint_dir: str
@@ -19,7 +20,7 @@ class GenerationRequest(BaseModel):
 
 
 class ModelDownloadRequest(BaseModel):
-    repo_id: str = "Wan-AI/Wan2.2-TI2V-5B"
+    model_id: str = "ti2v-5b"
     destination: str
 
 
