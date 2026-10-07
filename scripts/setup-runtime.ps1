@@ -130,6 +130,20 @@ __all__ = ["WanI2V", "WanT2V", "WanTI2V", "configs", "distributed", "modules"]
 '@
 Set-Content -LiteralPath $WanInit -Value $WanInitContent -Encoding UTF8
 
+Write-Step "Patching Wan attention fallback for Windows..."
+$WanModel = Join-Path $WanSourceDir "wan\modules\model.py"
+$WanModelContent = Get-Content -LiteralPath $WanModel -Raw
+$DirectFlashImport = "from .attention import flash_attention"
+$SdpaFallbackImport = "from .attention import attention as flash_attention"
+
+if ($WanModelContent.Contains($DirectFlashImport)) {
+  $WanModelContent = $WanModelContent.Replace($DirectFlashImport, $SdpaFallbackImport)
+  Set-Content -LiteralPath $WanModel -Value $WanModelContent -Encoding UTF8
+}
+elseif (-not $WanModelContent.Contains($SdpaFallbackImport)) {
+  throw "Could not patch Wan attention backend in $WanModel"
+}
+
 Write-Step "Installing Wan source package..."
 & $PythonExe -m pip install -e $WanSourceDir --no-deps
 Assert-ExitCode "Wan package installation failed."
