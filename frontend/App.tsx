@@ -41,6 +41,8 @@ type BackendStatus = {
   apiReachable: boolean;
   apiStatus: number | null;
   pythonPath: string;
+  port: number;
+  apiBaseUrl: string;
   lastExitCode: number | null;
   logTail: string;
 };
