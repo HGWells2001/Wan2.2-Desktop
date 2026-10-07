@@ -9,11 +9,14 @@ declare global {
   interface Window {
     wanDesktop?: {
       platform: string;
+      getApiBaseUrl(): Promise<string>;
       getBackendStatus(): Promise<{
         processRunning: boolean;
         apiReachable: boolean;
         apiStatus: number | null;
         pythonPath: string;
+        port: number;
+        apiBaseUrl: string;
         lastExitCode: number | null;
         logTail: string;
       }>;
