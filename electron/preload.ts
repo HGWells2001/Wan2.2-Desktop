@@ -20,6 +20,7 @@ function onProgress(
 contextBridge.exposeInMainWorld("wanDesktop", {
   platform: process.platform,
   getConfig: () => ipcRenderer.invoke("desktop:get-config"),
+  getApiBaseUrl: () => ipcRenderer.invoke("desktop:get-api-base-url"),
   getNativeGpu: () => ipcRenderer.invoke("desktop:get-native-gpu"),
   getBackendStatus: () => ipcRenderer.invoke("desktop:get-backend-status"),
   chooseDirectory: (title: string) => ipcRenderer.invoke("desktop:choose-directory", title),
