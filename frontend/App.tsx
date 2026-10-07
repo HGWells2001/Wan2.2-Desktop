@@ -67,6 +67,40 @@ type PromptOptimizationResponse = {
   message?: string | null;
 };
 
+type ModelProfile = {
+  id: string;
+  name: string;
+  short_name: string;
+  description: string;
+  engine: "wan-upstream" | "diffusers-gguf";
+  task: string;
+  modes: Array<"text" | "image">;
+  sizes: string[];
+  default_size: string;
+  quantization?: string | null;
+  recommended: boolean;
+  experimental: boolean;
+  download_label: string;
+  vram_note: string;
+};
+
+const FALLBACK_5B_PROFILE: ModelProfile = {
+  id: "ti2v-5b",
+  name: "Wan 2.2 TI2V 5B",
+  short_name: "TI2V 5B",
+  description: "Official Wan 2.2 hybrid 5B model for text and image video generation.",
+  engine: "wan-upstream",
+  task: "ti2v-5B",
+  modes: ["text", "image"],
+  sizes: ["1280*704", "704*1280"],
+  default_size: "1280*704",
+  quantization: null,
+  recommended: false,
+  experimental: false,
+  download_label: "Download Wan2.2 TI2V-5B",
+  vram_note: "Official low-memory profile.",
+};
+
 function ProgressBar({
   percent,
   phase,
@@ -110,10 +144,13 @@ export function App() {
   const [optimizingPrompt, setOptimizingPrompt] = useState(false);
   const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
   const [promptOptimizationNote, setPromptOptimizationNote] = useState<string | null>(null);
+  const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState("ti2v-5b");
+  const [modelPaths, setModelPaths] = useState<Record<string, string>>({});
   const [checkpointDir, setCheckpointDir] = useState("");
+  const [selectedSize, setSelectedSize] = useState("1280*704");
   const [imagePath, setImagePath] = useState("");
   const [mode, setMode] = useState<"text" | "image">("text");
-  const [orientation, setOrientation] = useState<"landscape" | "portrait">("landscape");
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -125,6 +162,14 @@ export function App() {
   const [pythonProgress, setPythonProgress] = useState<DesktopProgress | null>(null);
   const [desktopReady, setDesktopReady] = useState(false);
   const [modelDownload, setModelDownload] = useState<GenerationJob | null>(null);
+  const [modelDownloadTargetId, setModelDownloadTargetId] = useState<string | null>(null);
+
+  const selectedProfile = useMemo(
+    () =>
+      modelProfiles.find((profile) => profile.id === selectedModelId) ??
+      FALLBACK_5B_PROFILE,
+    [modelProfiles, selectedModelId],
+  );
 
   async function refreshNativeGpu() {
     const desktop = window.wanDesktop;
@@ -160,17 +205,23 @@ export function App() {
 
   async function refreshRuntime() {
     try {
-      const [healthResponse, hardwareResponse] = await Promise.all([
+      const [healthResponse, hardwareResponse, modelsResponse] = await Promise.all([
         fetch(`${API}/health`),
         fetch(`${API}/hardware`),
+        fetch(`${API}/models`),
       ]);
 
-      if (!healthResponse.ok || !hardwareResponse.ok) {
+      if (!healthResponse.ok || !hardwareResponse.ok || !modelsResponse.ok) {
         throw new Error("Backend responded with an error");
       }
 
       setHealth(await healthResponse.json());
       setHardware(await hardwareResponse.json());
+      const catalog = (await modelsResponse.json()) as {
+        defaultModelId: string;
+        models: ModelProfile[];
+      };
+      setModelProfiles(catalog.models);
       await refreshBackendStatus();
       setError(null);
     } catch (reason) {
@@ -221,8 +272,16 @@ export function App() {
         await refreshNativeGpu();
         await refreshBackendStatus();
         const config = await desktop.getConfig();
-        if (!cancelled && config.checkpointDir) {
-          setCheckpointDir(config.checkpointDir);
+        const restoredModelId = config.selectedModelId ?? "ti2v-5b";
+        const restoredPaths = {
+          ...(config.checkpointDir ? { "ti2v-5b": config.checkpointDir } : {}),
+          ...(config.modelPaths ?? {}),
+        };
+
+        if (!cancelled) {
+          setSelectedModelId(restoredModelId);
+          setModelPaths(restoredPaths);
+          setCheckpointDir(restoredPaths[restoredModelId] ?? "");
         }
         if (!cancelled && config.wanSourceDir) {
           setRuntimeInstalled(true);
@@ -265,10 +324,25 @@ export function App() {
         const next = (await response.json()) as GenerationJob;
         setModelDownload(next);
 
-        if (next.status === "completed") {
-          setCheckpointDir(next.outputPath);
+        if (next.status === "completed" && modelDownloadTargetId) {
+          const nextPaths = {
+            ...modelPaths,
+            [modelDownloadTargetId]: next.outputPath,
+          };
+          setModelPaths(nextPaths);
+
+          if (modelDownloadTargetId === selectedModelId) {
+            setCheckpointDir(next.outputPath);
+          }
+
           if (window.wanDesktop) {
-            await window.wanDesktop.saveConfig({ checkpointDir: next.outputPath });
+            await window.wanDesktop.saveConfig({
+              modelPaths: nextPaths,
+              selectedModelId,
+              ...(modelDownloadTargetId === "ti2v-5b"
+                ? { checkpointDir: next.outputPath }
+                : {}),
+            });
           }
         }
       } catch {
@@ -277,7 +351,7 @@ export function App() {
     }, 1500);
 
     return () => window.clearInterval(timer);
-  }, [modelDownload]);
+  }, [modelDownload, modelDownloadTargetId, modelPaths, selectedModelId]);
 
   useEffect(() => {
     if (!job || !["queued", "running"].includes(job.status)) return;
@@ -330,14 +404,39 @@ export function App() {
     const desktop = window.wanDesktop;
     if (!desktop) return;
 
-    const selected = await desktop.chooseDirectory("Choose Wan2.2 model folder");
+    const selected = await desktop.chooseDirectory(`Choose ${selectedProfile.short_name} model folder`);
     if (!selected) return;
 
+    const nextPaths = { ...modelPaths, [selectedModelId]: selected };
+    setModelPaths(nextPaths);
     setCheckpointDir(selected);
-    await desktop.saveConfig({ checkpointDir: selected });
+    await desktop.saveConfig({
+      selectedModelId,
+      modelPaths: nextPaths,
+      ...(selectedModelId === "ti2v-5b" ? { checkpointDir: selected } : {}),
+    });
   }
 
-  async function downloadDefaultModel() {
+  async function selectModel(modelId: string) {
+    const profile =
+      modelProfiles.find((candidate) => candidate.id === modelId) ??
+      FALLBACK_5B_PROFILE;
+
+    setSelectedModelId(modelId);
+    setCheckpointDir(modelPaths[modelId] ?? "");
+    setSelectedSize(profile.default_size);
+
+    if (!profile.modes.includes(mode)) {
+      setMode("text");
+      setImagePath("");
+    }
+
+    if (window.wanDesktop) {
+      await window.wanDesktop.saveConfig({ selectedModelId: modelId });
+    }
+  }
+
+  async function downloadSelectedModel() {
     const desktop = window.wanDesktop;
     if (!desktop) {
       setError("Model download is available in the desktop app.");
@@ -353,7 +452,7 @@ export function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repo_id: "Wan-AI/Wan2.2-TI2V-5B",
+          model_id: selectedModelId,
           destination,
         }),
       });
@@ -363,6 +462,7 @@ export function App() {
         throw new Error(payload.detail ?? "Model download could not be started");
       }
 
+      setModelDownloadTargetId(selectedModelId);
       setModelDownload(payload);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -520,10 +620,11 @@ export function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          task: "ti2v-5B",
+          model_id: selectedModelId,
+          task: selectedProfile.task,
           prompt,
           checkpoint_dir: checkpointDir,
-          size: orientation === "landscape" ? "1280*704" : "704*1280",
+          size: selectedSize,
           image_path: mode === "image" ? imagePath : null,
           offload_model: true,
           convert_model_dtype: true,
@@ -649,7 +750,15 @@ export function App() {
               <button
                 type="button"
                 className={mode === "image" ? "active" : ""}
-                onClick={() => setMode("image")}
+                disabled={!selectedProfile.modes.includes("image")}
+                title={
+                  selectedProfile.modes.includes("image")
+                    ? undefined
+                    : "This A14B GGUF profile currently supports Text-to-Video only."
+                }
+                onClick={() => {
+                  if (selectedProfile.modes.includes("image")) setMode("image");
+                }}
               >
                 Image
               </button>
@@ -754,77 +863,129 @@ export function App() {
             </label>
           )}
 
-          <label>
-            <span>Wan2.2-TI2V-5B model folder</span>
-            <div className="input-with-button">
-              <input
-                value={checkpointDir}
-                onChange={(event) => setCheckpointDir(event.target.value)}
-                placeholder="Choose or download the model"
-                required
-              />
-              <button
-                className="secondary inline"
-                type="button"
-                disabled={!desktopReady}
-                onClick={() => void chooseCheckpointDir()}
-              >
-                Browse
-              </button>
+          <div className="model-profile-card">
+            <div className="field-row">
+              <label>
+                <span>Model</span>
+                <select
+                  value={selectedModelId}
+                  disabled={["queued", "running"].includes(modelDownload?.status ?? "")}
+                  onChange={(event) => void selectModel(event.target.value)}
+                >
+                  {(modelProfiles.length ? modelProfiles : [FALLBACK_5B_PROFILE]).map(
+                    (profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                        {profile.recommended ? " · Recommended" : ""}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+
+              <label>
+                <span>Resolution</span>
+                <select
+                  value={selectedSize}
+                  onChange={(event) => setSelectedSize(event.target.value)}
+                >
+                  {selectedProfile.sizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size.replace("*", "×")}
+                      {size === selectedProfile.default_size ? " · Recommended" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-          </label>
 
-          <div className="model-actions">
-            <button
-              className="secondary"
-              type="button"
-              disabled={!desktopReady || ["queued", "running"].includes(modelDownload?.status ?? "")}
-              onClick={() => void downloadDefaultModel()}
-            >
-              {["queued", "running"].includes(modelDownload?.status ?? "")
-                ? "Downloading Wan2.2-TI2V-5B…"
-                : "Download Wan2.2-TI2V-5B"}
-            </button>
-            {modelDownload && (
-              <span className="download-status">
-                {modelDownload.status === "completed"
-                  ? "Model ready"
-                  : modelDownload.phase || modelDownload.status}
-              </span>
-            )}
-          </div>
+            <div className="model-profile-meta">
+              <div className="model-badges">
+                {selectedProfile.id === "ti2v-5b" ? (
+                  <span className="model-badge official">Official</span>
+                ) : null}
+                {selectedProfile.quantization ? (
+                  <span className="model-badge">{selectedProfile.quantization}</span>
+                ) : null}
+                {selectedProfile.recommended ? (
+                  <span className="model-badge recommended">3090 pick</span>
+                ) : null}
+                {selectedProfile.experimental ? (
+                  <span className="model-badge experimental">Experimental</span>
+                ) : null}
+              </div>
+              <p>{selectedProfile.description}</p>
+              <small>{selectedProfile.vram_note}</small>
+            </div>
 
-          {modelDownload && (
-            <ProgressBar
-              percent={modelDownload.progress ?? 0}
-              phase={
-                modelDownload.status === "completed"
-                  ? "Model ready"
-                  : modelDownload.phase || "Downloading model"
-              }
-            />
-          )}
-
-          <div className="field-row">
             <label>
-              <span>Frame</span>
-              <select
-                value={orientation}
-                onChange={(event) =>
-                  setOrientation(event.target.value as "landscape" | "portrait")
+              <span>{selectedProfile.short_name} model folder</span>
+              <div className="input-with-button">
+                <input
+                  value={checkpointDir}
+                  onChange={(event) => {
+                    setCheckpointDir(event.target.value);
+                    setModelPaths((current) => ({
+                      ...current,
+                      [selectedModelId]: event.target.value,
+                    }));
+                  }}
+                  placeholder="Choose or download the selected model"
+                  required
+                />
+                <button
+                  className="secondary inline"
+                  type="button"
+                  disabled={!desktopReady}
+                  onClick={() => void chooseCheckpointDir()}
+                >
+                  Browse
+                </button>
+              </div>
+            </label>
+
+            <div className="model-actions">
+              <button
+                className="secondary"
+                type="button"
+                disabled={
+                  !desktopReady ||
+                  !pythonReady ||
+                  ["queued", "running"].includes(modelDownload?.status ?? "")
                 }
+                onClick={() => void downloadSelectedModel()}
               >
-                <option value="landscape">Landscape · 1280×704</option>
-                <option value="portrait">Portrait · 704×1280</option>
-              </select>
-            </label>
+                {["queued", "running"].includes(modelDownload?.status ?? "")
+                  ? `Downloading ${selectedProfile.short_name}…`
+                  : selectedProfile.download_label}
+              </button>
+              {modelDownload && (
+                <span className="download-status">
+                  {modelDownload.status === "completed"
+                    ? "Model ready"
+                    : modelDownload.phase || modelDownload.status}
+                </span>
+              )}
+            </div>
 
-            <label>
-              <span>Model</span>
-              <select disabled value="ti2v-5B">
-                <option value="ti2v-5B">Wan 2.2 TI2V · 5B</option>
-              </select>
-            </label>
+            {modelDownload && (
+              <ProgressBar
+                percent={modelDownload.progress ?? 0}
+                phase={
+                  modelDownload.status === "completed"
+                    ? "Model ready"
+                    : modelDownload.phase || "Downloading model"
+                }
+              />
+            )}
+
+            {selectedProfile.engine === "diffusers-gguf" ? (
+              <p className="hint model-warning">
+                A14B GGUF is Text-to-Video only in this build. Q4_K_M is the
+                recommended starting point for a 24 GB RTX 3090. The 5B model
+                remains available and unchanged.
+              </p>
+            ) : null}
           </div>
 
           <button
