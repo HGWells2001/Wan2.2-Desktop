@@ -451,6 +451,7 @@ function registerIpc() {
       [/Installing managed Python/i, { percent: 12, phase: "Installing Python 3.11" }],
       [/Creating isolated Python environment/i, { percent: 20, phase: "Creating Python environment" }],
       [/Updating pip tooling/i, { percent: 28, phase: "Updating Python tools" }],
+      [/Preparing writable backend package/i, { percent: 33, phase: "Preparing desktop backend" }],
       [/Installing Wan2\.2 Desktop backend/i, { percent: 36, phase: "Installing desktop backend" }],
       [/Installing PyTorch CUDA runtime/i, { percent: 46, phase: "Installing PyTorch/CUDA" }],
       [/Installing Wan dependencies/i, { percent: 68, phase: "Installing Wan dependencies" }],
