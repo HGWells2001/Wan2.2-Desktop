@@ -9,10 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .hardware import detect_hardware_dict
 from .jobs import JobManager
+from .prompt_optimizer import optimize_prompt_ai, optimize_prompt_fast
 from .providers.wan22 import SUPPORTED_TASKS, Wan22Provider
-from .schemas import GenerationRequest, ModelDownloadRequest
+from .schemas import GenerationRequest, ModelDownloadRequest, PromptOptimizationRequest
 
-app = FastAPI(title="Wan2.2 Desktop Backend", version="0.2.0")
+app = FastAPI(title="Wan2.2 Desktop Backend", version="0.2.7")
 provider = Wan22Provider()
 jobs = JobManager()
 model_downloads = JobManager()
@@ -53,6 +54,52 @@ def provider_info() -> dict[str, object]:
         "ready": provider.is_ready(),
         "sourceDir": str(provider.source_dir) if provider.source_dir else None,
         "tasks": SUPPORTED_TASKS,
+    }
+
+
+
+
+@app.post("/api/prompts/optimize")
+def optimize_prompt(request: PromptOptimizationRequest) -> dict[str, object]:
+    original = request.prompt.strip()
+
+    if request.optimizer == "fast":
+        optimized = optimize_prompt_fast(original, request.video_mode)
+        return {
+            "original_prompt": original,
+            "optimized_prompt": optimized,
+            "optimizer": "fast",
+            "model": None,
+            "message": "Fast optimizer applied. No additional AI model was loaded.",
+        }
+
+    root = provider.source_dir
+    if root is None or not root.is_dir():
+        raise HTTPException(status_code=400, detail="Install the Wan runtime before using AI prompt optimization.")
+
+    try:
+        optimized, device = optimize_prompt_ai(
+            original,
+            request.video_mode,
+            wan_source=root,
+            seed=request.seed,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI prompt optimization failed: {exc}",
+        ) from exc
+
+    return {
+        "original_prompt": original,
+        "optimized_prompt": optimized,
+        "optimizer": "ai",
+        "model": "Qwen/Qwen2.5-3B-Instruct",
+        "device": device,
+        "message": (
+            "AI optimizer applied with Qwen2.5-3B-Instruct. "
+            "The first use may download the model from Hugging Face."
+        ),
     }
 
 
